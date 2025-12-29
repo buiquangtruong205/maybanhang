@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Máy Bán Hàng Tự Động</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon">🏪</span>
+                <h1>Vending Machine</h1>
+            </div>
+            <div class="header-right">
+                <span class="clock" id="clock"></span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-container">
+        <!-- Products Section -->
+        <section class="products-section">
+            <h2 class="section-title">
+                <span class="title-icon">🛒</span>
+                Chọn Sản Phẩm
+            </h2>
+            <div class="products-grid" id="products-grid">
+                <!-- Products will be loaded here -->
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                    <p>Đang tải sản phẩm...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Cart Section -->
+        <section class="cart-section">
+            <h2 class="section-title">
+                <span class="title-icon">🧾</span>
+                Đơn Hàng
+                <span class="cart-badge" id="cart-count">0</span>
+            </h2>
+            <div class="cart-items" id="cart-items">
+                <div class="empty-cart">
+                    <span class="empty-icon">📦</span>
+                    <p>Chưa có sản phẩm nào</p>
+                </div>
+            </div>
+            <div class="cart-total">
+                <span>Tổng cộng:</span>
+                <span class="total-amount" id="total-amount">0 ₫</span>
+            </div>
+            <button class="checkout-btn" id="checkout-btn" disabled>
+                <span class="btn-icon">💳</span>
+                Thanh Toán
+            </button>
+        </section>
+    </main>
+
+    <!-- QR Payment Modal -->
+    <div class="modal" id="qr-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content qr-modal-content">
+            <div class="modal-header">
+                <h3>Quét Mã QR Để Thanh Toán</h3>
+                <button class="modal-close" id="qr-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="qr-container">
+                    <img class="qr-code" id="qr-code" src="" alt="QR Code">
+                </div>
+                <div class="payment-info">
+                    <p class="order-code">Mã đơn hàng: <strong id="order-code-display">---</strong></p>
+                    <p class="payment-amount">Số tiền: <strong id="payment-amount-display">0 ₫</strong></p>
+                </div>
+                <div class="payment-status" id="payment-status">
+                    <div class="status-waiting">
+                        <div class="pulse-ring"></div>
+                        <span>Đang chờ thanh toán...</span>
+                    </div>
+                </div>
+                <div class="payment-timer">
+                    <span>Thời gian còn lại: </span>
+                    <span id="countdown">05:00</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancel-payment-btn">Hủy Thanh Toán</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div class="modal" id="success-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content success-modal-content">
+            <div class="success-animation">
+                <div class="checkmark-circle">
+                    <div class="checkmark"></div>
+                </div>
+            </div>
+            <h3>Thanh Toán Thành Công!</h3>
+            <p class="success-message">Cảm ơn bạn đã mua hàng</p>
+            <p class="success-order">Đơn hàng: <strong id="success-order-code">---</strong></p>
+            <button class="btn-primary" id="success-close-btn">Tiếp Tục Mua Hàng</button>
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div class="toast" id="error-toast">
+        <span class="toast-icon">⚠️</span>
+        <span class="toast-message" id="toast-message"></span>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
