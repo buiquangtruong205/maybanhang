@@ -3,10 +3,11 @@ const API_BASE = '/api';
 let token = localStorage.getItem('token');
 let currentUser = null;
 
-// Products, Machines and Slots cache for lookups
+// Products, Machines, Slots and Users cache for lookups
 let productsCache = [];
 let machinesCache = [];
 let slotsCache = [];
+let usersCache = [];
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -136,6 +137,24 @@ function switchTab(tabName) {
     document.getElementById(tabName).classList.add('active');
 }
 
+// Sub-tab switching for devices
+function switchDeviceTab(tabName) {
+    document.querySelectorAll('#devices .sub-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('#devices .sub-tab-content').forEach(c => c.classList.remove('active'));
+
+    event.target.classList.add('active');
+    document.getElementById(`device-${tabName}`).classList.add('active');
+}
+
+// Sub-tab switching for security
+function switchSecurityTab(tabName) {
+    document.querySelectorAll('#security .sub-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('#security .sub-tab-content').forEach(c => c.classList.remove('active'));
+
+    event.target.classList.add('active');
+    document.getElementById(`security-${tabName}`).classList.add('active');
+}
+
 // Load all data
 async function loadAllData() {
     await Promise.all([
@@ -144,8 +163,25 @@ async function loadAllData() {
         loadProducts(),
         loadSlots(),
         loadOrders(),
-        loadTransactions()
+        loadTransactions(),
+        loadImports(),
+        loadDeviceIdentities(),
+        loadDeviceSessions(),
+        loadDeviceRotations(),
+        loadSecurityEvents(),
+        loadApiAuditLogs(),
+        loadAccessLogs(),
+        loadFirmware(),
+        loadTelemetry(),
+        loadUsers()
     ]);
+
+    // Populate telemetry machine filter
+    const filter = document.getElementById('telemetryMachineFilter');
+    if (filter && machinesCache.length > 0) {
+        filter.innerHTML = '<option value="">-- Tất cả máy --</option>' +
+            machinesCache.map(m => `<option value="${m.machine_id}">${m.name}</option>`).join('');
+    }
 }
 
 // Load statistics
@@ -158,7 +194,7 @@ async function loadStats() {
         document.getElementById('statRevenue').textContent = formatPrice(stats.monthly_revenue);
 
         // Sản phẩm bán chạy nhất
-        document.getElementById('statBestProduct').textContent = stats.best_product.name;
+        document.getElementById('statBestProduct').textContent = stats.best_product.product_name || '-';
         if (stats.best_product.total_sold > 0) {
             document.getElementById('statBestProductSold').textContent = `${stats.best_product.total_sold} đã bán`;
         }
@@ -229,9 +265,83 @@ async function loadTransactions() {
     }
 }
 
+async function loadUsers() {
+    const data = await apiCall('/users');
+    if (data.success) {
+        usersCache = data.data;
+    }
+}
+
+async function loadImports() {
+    const data = await apiCall('/imports');
+    if (data.success) {
+        renderImports(data.data);
+    }
+}
+
+async function loadDeviceIdentities() {
+    const data = await apiCall('/devices/identity');
+    if (data.success) {
+        renderDeviceIdentities(data.data);
+    }
+}
+
+async function loadDeviceSessions() {
+    const data = await apiCall('/devices/sessions');
+    if (data.success) {
+        renderDeviceSessions(data.data);
+    }
+}
+
+async function loadDeviceRotations() {
+    const data = await apiCall('/devices/key-rotations');
+    if (data.success) {
+        renderDeviceRotations(data.data);
+    }
+}
+
+async function loadSecurityEvents() {
+    const data = await apiCall('/security/events');
+    if (data.success) {
+        renderSecurityEvents(data.data);
+    }
+}
+
+async function loadApiAuditLogs() {
+    const data = await apiCall('/security/audit-logs');
+    if (data.success) {
+        renderApiAuditLogs(data.data);
+    }
+}
+
+async function loadAccessLogs() {
+    const data = await apiCall('/security/access-logs');
+    if (data.success) {
+        renderAccessLogs(data.data);
+    }
+}
+
+async function loadFirmware() {
+    const data = await apiCall('/firmware/updates');
+    if (data.success) {
+        renderFirmware(data.data);
+    }
+}
+
+async function loadTelemetry() {
+    const filter = document.getElementById('telemetryMachineFilter');
+    const machineId = filter ? filter.value : '';
+    const endpoint = machineId ? `/telemetry/machine/${machineId}` : '/telemetry';
+    const data = await apiCall(endpoint);
+    if (data.success) {
+        renderTelemetry(data.data);
+    }
+}
+
 // Helper function to escape HTML for safe JSON in attributes
 function escapeHtml(str) {
-    return str.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // Render functions
@@ -259,14 +369,15 @@ function renderProducts(products) {
     const tbody = document.getElementById('productsTable');
     tbody.innerHTML = products.map(p => {
         const itemJson = escapeHtml(JSON.stringify(p));
+        const productName = p.product_name || p.name || '';
         return `
         <tr>
             <td>${p.product_id}</td>
-            <td>${p.name}</td>
+            <td>${productName}</td>
             <td>${formatPrice(p.price)}</td>
             <td class="product-image-cell">
                 ${p.image
-                ? `<img src="${p.image}" alt="${escapeHtml(p.name)}" class="product-thumbnail" onclick="showImagePreview('${escapeHtml(p.image)}')"> `
+                ? `<img src="${p.image}" alt="${escapeHtml(productName)}" class="product-thumbnail" onclick="showImagePreview('${escapeHtml(p.image)}')">`
                 : '<span class="no-image">📷 Chưa có ảnh</span>'
             }
             </td>
@@ -290,13 +401,14 @@ function renderSlots(slots) {
     tbody.innerHTML = slots.map(s => {
         const machine = machinesCache.find(m => m.machine_id === s.machine_id);
         const product = productsCache.find(p => p.product_id === s.product_id);
+        const productName = product?.product_name || product?.name || '-';
         const itemJson = escapeHtml(JSON.stringify(s));
         return `
             <tr>
                 <td>${s.slot_id}</td>
                 <td>${machine?.name || s.machine_id}</td>
                 <td>${s.slot_code}</td>
-                <td>${product?.name || '-'}</td>
+                <td>${productName}</td>
                 <td>${s.stock}</td>
                 <td>${s.capacity}</td>
                 <td class="actions">
@@ -310,24 +422,25 @@ function renderSlots(slots) {
 
 function renderOrders(orders) {
     const tbody = document.getElementById('ordersTable');
-    // Sắp xếp theo thời gian tạo giảm dần (đơn hàng mới nhất lên đầu) - đảm bảo thứ tự đúng
     const sortedOrders = [...orders].sort((a, b) => {
-        const dateA = new Date(a.create_at || 0);
-        const dateB = new Date(b.create_at || 0);
-        return dateB - dateA; // Giảm dần (mới nhất trước)
+        const dateA = new Date(a.created_at || 0);
+        const dateB = new Date(b.created_at || 0);
+        return dateB - dateA;
     });
-    
+
     tbody.innerHTML = sortedOrders.map(o => {
         const product = productsCache.find(p => p.product_id === o.product_id);
+        const productName = product?.product_name || product?.name || o.product_id;
         const slot = slotsCache.find(s => s.slot_id === o.slot_id);
         return `
             <tr>
                 <td>${o.order_id}</td>
-                <td>${product?.name || o.product_id}</td>
+                <td>${productName}</td>
                 <td>${formatPrice(o.price_snapshot)}</td>
                 <td>${slot?.slot_code || o.slot_id}</td>
-                <td><span class="status status-${o.status}">${o.status}</span></td>
-                <td>${formatDate(o.create_at)}</td>
+                <td><span class="status status-${o.status_payment}">${o.status_payment}</span></td>
+                <td><span class="status status-${o.status_slots}">${o.status_slots}</span></td>
+                <td>${formatDate(o.created_at)}</td>
             </tr>
         `;
     }).join('');
@@ -347,6 +460,242 @@ function renderTransactions(transactions) {
             <td><span class="status status-${t.status}">${t.status}</span></td>
         </tr>
     `).join('');
+}
+
+function renderImports(imports) {
+    const tbody = document.getElementById('importsTable');
+    tbody.innerHTML = imports.map(i => {
+        const machine = machinesCache.find(m => m.machine_id === i.machine_id);
+        const slot = slotsCache.find(s => s.slot_id === i.slot_id);
+        const product = productsCache.find(p => p.product_id === i.product_id);
+        const user = usersCache.find(u => u.user_id === i.user_id);
+        return `
+            <tr>
+                <td>${i.import_id}</td>
+                <td>${machine?.name || i.machine_id}</td>
+                <td>${slot?.slot_code || i.slot_id}</td>
+                <td>${product?.product_name || product?.name || i.product_id}</td>
+                <td>${i.quantity}</td>
+                <td>${user?.username || i.user_id}</td>
+                <td>${formatDate(i.created_at)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderDeviceIdentities(identities) {
+    const tbody = document.getElementById('deviceIdentityTable');
+    tbody.innerHTML = identities.map(d => {
+        const machine = machinesCache.find(m => m.machine_id === d.machine_id);
+        return `
+            <tr>
+                <td>${machine?.name || d.machine_id}</td>
+                <td><code>${d.mac_address || '-'}</code></td>
+                <td><code title="${d.cert_fingerprint || ''}">${(d.cert_fingerprint || '-').substring(0, 16)}...</code></td>
+                <td><span class="status status-${d.status}">${d.status}</span></td>
+                <td>${formatDate(d.provisioned_at)}</td>
+                <td class="actions">
+                    ${d.status === 'active' ? `<button class="btn btn-delete" onclick="revokeDeviceIdentity(${d.machine_id})">Thu hồi</button>` : '-'}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderDeviceSessions(sessions) {
+    const tbody = document.getElementById('deviceSessionsTable');
+    tbody.innerHTML = sessions.map(s => {
+        const machine = machinesCache.find(m => m.machine_id === s.machine_id);
+        return `
+            <tr>
+                <td>${s.session_id}</td>
+                <td>${machine?.name || s.machine_id}</td>
+                <td>${s.ip_address || '-'}</td>
+                <td>${formatDate(s.issued_at)}</td>
+                <td>${formatDate(s.expires_at)}</td>
+                <td><span class="status status-${s.is_revoked ? 'revoked' : 'active'}">${s.is_revoked ? 'Đã thu hồi' : 'Active'}</span></td>
+                <td class="actions">
+                    ${!s.is_revoked ? `<button class="btn btn-delete" onclick="revokeSession(${s.session_id})">Thu hồi</button>` : '-'}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderDeviceRotations(rotations) {
+    const tbody = document.getElementById('deviceRotationsTable');
+    tbody.innerHTML = rotations.map(r => {
+        const machine = machinesCache.find(m => m.machine_id === r.machine_id);
+        const user = usersCache.find(u => u.user_id === r.rotated_by_user_id);
+        return `
+            <tr>
+                <td>${r.rotation_id}</td>
+                <td>${machine?.name || r.machine_id}</td>
+                <td><code title="${r.old_key_fingerprint || ''}">${(r.old_key_fingerprint || '-').substring(0, 12)}...</code></td>
+                <td><code title="${r.new_key_fingerprint}">${r.new_key_fingerprint.substring(0, 12)}...</code></td>
+                <td>${user?.username || r.rotated_by_user_id || '-'}</td>
+                <td>${formatDate(r.rotated_at)}</td>
+                <td>${r.reason || '-'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderSecurityEvents(events) {
+    const tbody = document.getElementById('securityEventsTable');
+    tbody.innerHTML = events.map(e => {
+        const machine = machinesCache.find(m => m.machine_id === e.machine_id);
+        return `
+            <tr>
+                <td>${e.event_id}</td>
+                <td>${machine?.name || e.machine_id || '-'}</td>
+                <td>${e.event_type}</td>
+                <td><span class="status status-severity-${e.severity}">${e.severity}</span></td>
+                <td>${e.message || '-'}</td>
+                <td>${formatDate(e.created_at)}</td>
+                <td><span class="status status-${e.is_resolved ? 'resolved' : 'pending'}">${e.is_resolved ? 'Đã xử lý' : 'Chưa'}</span></td>
+                <td class="actions">
+                    ${!e.is_resolved ? `<button class="btn btn-primary" onclick="resolveSecurityEvent(${e.event_id})">Xử lý</button>` : '-'}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderApiAuditLogs(logs) {
+    const tbody = document.getElementById('apiAuditLogsTable');
+    tbody.innerHTML = logs.map(l => {
+        const machine = machinesCache.find(m => m.machine_id === l.machine_id);
+        return `
+            <tr>
+                <td>${l.request_id}</td>
+                <td>${machine?.name || l.machine_id || '-'}</td>
+                <td><code>${l.endpoint}</code></td>
+                <td><span class="status status-method-${l.method.toLowerCase()}">${l.method}</span></td>
+                <td>${l.ip_address || '-'}</td>
+                <td><span class="status status-${l.response_code < 400 ? 'success' : 'error'}">${l.response_code}</span></td>
+                <td><span class="status status-${l.signature_ok ? 'true' : 'false'}">${l.signature_ok ? '✓' : '✗'}</span></td>
+                <td>${formatDate(l.created_at)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderAccessLogs(logs) {
+    const tbody = document.getElementById('accessLogsTable');
+    tbody.innerHTML = logs.map(l => {
+        const user = usersCache.find(u => u.user_id === l.user_id);
+        const machine = machinesCache.find(m => m.machine_id === l.machine_id);
+        return `
+            <tr>
+                <td>${l.access_id}</td>
+                <td>${user?.username || l.user_id || '-'}</td>
+                <td>${machine?.name || l.machine_id}</td>
+                <td><span class="status status-action-${l.action}">${l.action}</span></td>
+                <td>${formatDate(l.started_at)}</td>
+                <td>${l.ended_at ? formatDate(l.ended_at) : '<em>Đang mở</em>'}</td>
+                <td>${l.note || '-'}</td>
+                <td class="actions">
+                    ${!l.ended_at ? `<button class="btn btn-primary" onclick="endAccessLog(${l.access_id})">Kết thúc</button>` : '-'}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderFirmware(updates) {
+    const tbody = document.getElementById('firmwareTable');
+    tbody.innerHTML = updates.map(u => {
+        const machine = machinesCache.find(m => m.machine_id === u.machine_id);
+        return `
+            <tr>
+                <td>${u.update_id}</td>
+                <td>${machine?.name || u.machine_id}</td>
+                <td>${u.from_version || '-'}</td>
+                <td>${u.to_version}</td>
+                <td><code title="${u.checksum || ''}">${(u.checksum || '-').substring(0, 12)}...</code></td>
+                <td><span class="status status-firmware-${u.status}">${u.status}</span></td>
+                <td>${u.started_at ? formatDate(u.started_at) : '-'}</td>
+                <td>${u.finished_at ? formatDate(u.finished_at) : '-'}</td>
+                <td class="actions">
+                    ${u.status === 'pending' ? `<button class="btn btn-delete" onclick="deleteFirmwareUpdate(${u.update_id})">Xóa</button>` : '-'}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderTelemetry(logs) {
+    const tbody = document.getElementById('telemetryTable');
+    tbody.innerHTML = logs.map(l => {
+        const machine = machinesCache.find(m => m.machine_id === l.machine_id);
+        return `
+            <tr>
+                <td>${l.log_id}</td>
+                <td>${machine?.name || l.machine_id}</td>
+                <td>${l.temperature !== null ? l.temperature.toFixed(1) + '°C' : '-'}</td>
+                <td>${l.humidity !== null ? l.humidity.toFixed(1) + '%' : '-'}</td>
+                <td>${l.voltage !== null ? l.voltage.toFixed(2) + 'V' : '-'}</td>
+                <td><span class="status status-${l.door_open ? 'warning' : 'success'}">${l.door_open ? '🚪 Mở' : '✓ Đóng'}</span></td>
+                <td>${formatDate(l.ts)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Action handlers for new features
+async function revokeDeviceIdentity(machineId) {
+    if (!confirm('Bạn có chắc muốn thu hồi định danh thiết bị này?')) return;
+    const result = await apiCall(`/devices/identity/${machineId}/revoke`, 'PUT');
+    if (result.success) {
+        showToast('Đã thu hồi định danh thiết bị!', 'success');
+        loadDeviceIdentities();
+    } else {
+        showToast(result.message || 'Có lỗi xảy ra', 'error');
+    }
+}
+
+async function revokeSession(sessionId) {
+    if (!confirm('Bạn có chắc muốn thu hồi session này?')) return;
+    const result = await apiCall(`/devices/sessions/${sessionId}/revoke`, 'PUT');
+    if (result.success) {
+        showToast('Đã thu hồi session!', 'success');
+        loadDeviceSessions();
+    } else {
+        showToast(result.message || 'Có lỗi xảy ra', 'error');
+    }
+}
+
+async function resolveSecurityEvent(eventId) {
+    const result = await apiCall(`/security/events/${eventId}/resolve`, 'PUT');
+    if (result.success) {
+        showToast('Đã đánh dấu đã xử lý!', 'success');
+        loadSecurityEvents();
+    } else {
+        showToast(result.message || 'Có lỗi xảy ra', 'error');
+    }
+}
+
+async function endAccessLog(accessId) {
+    const note = prompt('Ghi chú khi kết thúc (tùy chọn):');
+    const result = await apiCall(`/security/access-logs/${accessId}/end`, 'PUT', { note });
+    if (result.success) {
+        showToast('Đã kết thúc phiên truy cập!', 'success');
+        loadAccessLogs();
+    } else {
+        showToast(result.message || 'Có lỗi xảy ra', 'error');
+    }
+}
+
+async function deleteFirmwareUpdate(updateId) {
+    if (!confirm('Bạn có chắc muốn xóa cập nhật này?')) return;
+    const result = await apiCall(`/firmware/updates/${updateId}`, 'DELETE');
+    if (result.success) {
+        showToast('Đã xóa cập nhật firmware!', 'success');
+        loadFirmware();
+    } else {
+        showToast(result.message || 'Có lỗi xảy ra', 'error');
+    }
 }
 
 // Form handling
@@ -382,9 +731,12 @@ function getFormTitle(type, isEdit) {
     const titles = {
         machine: isEdit ? 'Sửa máy bán hàng' : 'Thêm máy bán hàng',
         product: isEdit ? 'Sửa sản phẩm' : 'Thêm sản phẩm',
-        slot: isEdit ? 'Sửa khe hàng' : 'Thêm khe hàng'
+        slot: isEdit ? 'Sửa khe hàng' : 'Thêm khe hàng',
+        import: 'Nhập hàng vào kho',
+        firmware: 'Tạo cập nhật Firmware',
+        accessLog: 'Ghi nhận truy cập'
     };
-    return titles[type];
+    return titles[type] || 'Thêm mới';
 }
 
 function getFormFields(type, item) {
@@ -413,10 +765,11 @@ function getFormFields(type, item) {
                 </div>
             `;
         case 'product':
+            const productName = item?.product_name || item?.name || '';
             return `
                 <div class="form-group">
                     <label>Tên sản phẩm</label>
-                    <input type="text" name="name" value="${item?.name || ''}" required>
+                    <input type="text" name="product_name" value="${productName}" required>
                 </div>
                 <div class="form-group">
                     <label>Giá</label>
@@ -471,7 +824,7 @@ function getFormFields(type, item) {
                     <label>Sản phẩm</label>
                     <select name="product_id">
                         <option value="">-- Không có --</option>
-                        ${productsCache.map(p => `<option value="${p.product_id}" ${item?.product_id === p.product_id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                        ${productsCache.map(p => `<option value="${p.product_id}" ${item?.product_id === p.product_id ? 'selected' : ''}>${p.product_name || p.name}</option>`).join('')}
                     </select>
                 </div>
                 <div class="form-group">
@@ -483,7 +836,89 @@ function getFormFields(type, item) {
                     <input type="number" name="capacity" value="${item?.capacity || 10}" required>
                 </div>
             `;
+        case 'import':
+            return `
+                <div class="form-group">
+                    <label>Máy bán hàng</label>
+                    <select name="machine_id" id="importMachine" required onchange="filterSlotsForImport()">
+                        <option value="">-- Chọn máy --</option>
+                        ${machinesCache.map(m => `<option value="${m.machine_id}">${m.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Khe hàng</label>
+                    <select name="slot_id" id="importSlot" required>
+                        <option value="">-- Chọn khe --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Sản phẩm</label>
+                    <select name="product_id" required>
+                        ${productsCache.map(p => `<option value="${p.product_id}">${p.product_name || p.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Số lượng nhập</label>
+                    <input type="number" name="quantity" min="1" value="1" required>
+                </div>
+                <input type="hidden" name="user_id" value="${currentUser?.user_id || 1}">
+            `;
+        case 'firmware':
+            return `
+                <div class="form-group">
+                    <label>Máy bán hàng</label>
+                    <select name="machine_id" required>
+                        ${machinesCache.map(m => `<option value="${m.machine_id}">${m.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Từ version</label>
+                    <input type="text" name="from_version" placeholder="1.0.0">
+                </div>
+                <div class="form-group">
+                    <label>Đến version</label>
+                    <input type="text" name="to_version" required placeholder="1.1.0">
+                </div>
+                <div class="form-group">
+                    <label>Checksum</label>
+                    <input type="text" name="checksum" placeholder="MD5/SHA256">
+                </div>
+            `;
+        case 'accessLog':
+            return `
+                <div class="form-group">
+                    <label>Máy bán hàng</label>
+                    <select name="machine_id" required>
+                        ${machinesCache.map(m => `<option value="${m.machine_id}">${m.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Hành động</label>
+                    <select name="action" required>
+                        <option value="open">Mở máy</option>
+                        <option value="close">Đóng máy</option>
+                        <option value="refill">Nhập hàng</option>
+                        <option value="maintenance">Bảo trì</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Ghi chú</label>
+                    <textarea name="note" rows="3"></textarea>
+                </div>
+                <input type="hidden" name="user_id" value="${currentUser?.user_id || 1}">
+            `;
+        default:
+            return '';
     }
+}
+
+function filterSlotsForImport() {
+    const machineId = document.getElementById('importMachine').value;
+    const slotSelect = document.getElementById('importSlot');
+    const filteredSlots = slotsCache.filter(s => s.machine_id == machineId);
+
+    slotSelect.innerHTML = '<option value="">-- Chọn khe --</option>' +
+        filteredSlots.map(s => `<option value="${s.slot_id}">${s.slot_code}</option>`).join('');
 }
 
 async function handleFormSubmit(e) {
@@ -494,9 +929,7 @@ async function handleFormSubmit(e) {
     formData.forEach((value, key) => {
         if (key === 'active') {
             data[key] = value === 'true';
-        } else if (key === 'price' || key === 'stock' || key === 'capacity' || key === 'machine_id') {
-            data[key] = parseInt(value) || 0;
-        } else if (key === 'product_id') {
+        } else if (['price', 'stock', 'capacity', 'machine_id', 'slot_id', 'product_id', 'quantity', 'user_id'].includes(key)) {
             data[key] = value ? parseInt(value) : null;
         } else {
             data[key] = value;
@@ -518,8 +951,21 @@ async function handleFormSubmit(e) {
         }
     }
 
-    const endpoint = `/${currentFormType}s${currentEditId ? '/' + currentEditId : ''}`;
-    const method = currentEditId ? 'PUT' : 'POST';
+    // Determine endpoint and method
+    let endpoint, method;
+    if (currentFormType === 'import') {
+        endpoint = '/imports';
+        method = 'POST';
+    } else if (currentFormType === 'firmware') {
+        endpoint = '/firmware/updates';
+        method = 'POST';
+    } else if (currentFormType === 'accessLog') {
+        endpoint = '/security/access-logs';
+        method = 'POST';
+    } else {
+        endpoint = `/${currentFormType}s${currentEditId ? '/' + currentEditId : ''}`;
+        method = currentEditId ? 'PUT' : 'POST';
+    }
 
     const result = await apiCall(endpoint, method, data);
 
@@ -637,11 +1083,9 @@ function previewUrlImage(url) {
 }
 
 function switchImageTab(tab) {
-    // Update tab buttons
     document.querySelectorAll('.image-tab').forEach(t => t.classList.remove('active'));
     if (event && event.target) event.target.classList.add('active');
 
-    // Reset states
     const fileArea = document.getElementById('fileUploadArea');
     const urlArea = document.getElementById('urlInputArea');
     const previewContainer = document.getElementById('imagePreviewContainer');
@@ -661,7 +1105,6 @@ function switchImageTab(tab) {
         if (urlArea) urlArea.classList.remove('hidden');
     }
 
-    // Hide preview if switching tabs and no image selected
     if (imageUrl && !imageUrl.value && previewContainer) {
         previewContainer.classList.add('hidden');
     }
@@ -680,7 +1123,6 @@ function removeImage() {
     if (formImagePreview) formImagePreview.src = '';
     if (imagePreviewContainer) imagePreviewContainer.classList.add('hidden');
 
-    // Show tabs and upload area again
     const tabs = document.querySelector('.image-source-tabs');
     const fileArea = document.getElementById('fileUploadArea');
     const urlArea = document.getElementById('urlInputArea');
@@ -692,7 +1134,6 @@ function removeImage() {
     }
     if (urlArea) urlArea.classList.add('hidden');
 
-    // Reset tabs to first tab active
     document.querySelectorAll('.image-tab').forEach((t, i) => {
         if (i === 0) t.classList.add('active');
         else t.classList.remove('active');

@@ -31,12 +31,18 @@ def create_payment():
         
         data = PaymentCreate(**json_data)
         
-        # Convert items to dict format for PayOS
-        items = [item.model_dump() for item in data.items]
+        # Convert items to dict format for PayOS (ensure price is int)
+        items = []
+        for item in data.items:
+            items.append({
+                'name': item.name,
+                'quantity': item.quantity,
+                'price': int(item.price)  # PayOS requires int
+            })
         
         result = create_payment_link(
             order_code=data.order_code,
-            amount=data.amount,
+            amount=int(data.amount),  # PayOS requires int
             description=data.description,
             items=items,
             buyer_name=data.buyer_name,
@@ -62,6 +68,8 @@ def create_payment():
             }), 400
             
     except ValidationError as e:
+        print(f"❌ Validation error: {e.errors()}")
+        print(f"📦 Received data was: {json_data}")
         return jsonify({
             'success': False,
             'message': 'Validation error',
@@ -113,9 +121,10 @@ def payment_webhook():
             order = Order.query.get(order_code)
             if order:
                 # Chỉ cập nhật nếu order đang ở trạng thái pending
-                if order.status == 'pending':
+                if order.status_payment == 'pending':
                     # Cập nhật status thành completed
-                    order.status = 'completed'
+                    order.status_payment = 'completed'
+                    order.status_slots = 'completed'
                     
                     # Giảm stock trong slot
                     slot = Slot.query.get(order.slot_id)
@@ -149,7 +158,7 @@ def payment_webhook():
                     db.session.commit()
                     print(f"✅ Order #{order_code} completed and transaction created")
                 else:
-                    print(f"ℹ️ Order #{order_code} already has status: {order.status}")
+                    print(f"ℹ️ Order #{order_code} already has status: {order.status_payment}")
             else:
                 print(f"⚠️ Order #{order_code} not found in database")
             
@@ -223,14 +232,15 @@ def check_payment_status(order_code):
                 order = Order.query.get(order_code)
                 if not order:
                     print(f"⚠️ Order #{order_code} not found in database")
-                elif order.status != 'pending':
-                    print(f"ℹ️ Order #{order_code} already has status: {order.status}, skipping sync")
+                elif order.status_payment != 'pending':
+                    print(f"ℹ️ Order #{order_code} already has status: {order.status_payment}, skipping sync")
                 else:
                     print(f"🔄 Syncing payment status for order #{order_code} from PayOS to database")
                     
                     try:
                         # Cập nhật order status
-                        order.status = 'completed'
+                        order.status_payment = 'completed'
+                        order.status_slots = 'completed'
                         
                         # Giảm stock trong slot
                         slot = Slot.query.get(order.slot_id)
@@ -346,13 +356,14 @@ def sync_payment_status(order_code):
                     'payos_status': payos_status,
                     'amount_paid': amount_paid,
                     'amount_remaining': amount_remaining,
-                    'order_status': order.status
+                    'order_status': order.status_payment
                 }
             }), 400
         
         # Nếu đã thanh toán, sync về database
-        if order.status == 'pending':
-            order.status = 'completed'
+        if order.status_payment == 'pending':
+            order.status_payment = 'completed'
+            order.status_slots = 'completed'
             
             # Giảm stock
             slot = Slot.query.get(order.slot_id)
@@ -383,17 +394,17 @@ def sync_payment_status(order_code):
                 'message': f'Order #{order_code} synced successfully',
                 'data': {
                     'order_id': order.order_id,
-                    'order_status': order.status,
+                    'order_status': order.status_payment,
                     'payos_status': payos_status
                 }
             }), 200
         else:
             return jsonify({
                 'success': True,
-                'message': f'Order #{order_code} already has status: {order.status}',
+                'message': f'Order #{order_code} already has status: {order.status_payment}',
                 'data': {
                     'order_id': order.order_id,
-                    'order_status': order.status,
+                    'order_status': order.status_payment,
                     'payos_status': payos_status
                 }
             }), 200

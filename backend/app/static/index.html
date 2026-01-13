@@ -66,6 +66,11 @@
                 <button class="tab" data-tab="slots">🎰 Khe hàng</button>
                 <button class="tab" data-tab="orders">📋 Đơn hàng</button>
                 <button class="tab" data-tab="transactions">💳 Giao dịch</button>
+                <button class="tab" data-tab="imports">📥 Nhập hàng</button>
+                <button class="tab" data-tab="devices">🔌 Thiết bị</button>
+                <button class="tab" data-tab="security">🔒 Bảo mật</button>
+                <button class="tab" data-tab="firmware">⚙️ Firmware</button>
+                <button class="tab" data-tab="telemetry">📡 Telemetry</button>
             </div>
 
             <!-- Statistics Tab -->
@@ -183,7 +188,8 @@
                             <th>Sản phẩm</th>
                             <th>Giá</th>
                             <th>Khe</th>
-                            <th>Trạng thái</th>
+                            <th>TT Thanh toán</th>
+                            <th>TT Kho</th>
                             <th>Ngày tạo</th>
                         </tr>
                     </thead>
@@ -210,6 +216,206 @@
                         </tr>
                     </thead>
                     <tbody id="transactionsTable"></tbody>
+                </table>
+            </div>
+
+            <!-- Imports Tab -->
+            <div id="imports" class="tab-content">
+                <div class="tab-header">
+                    <h2>Lịch sử nhập hàng</h2>
+                    <button class="btn btn-primary" onclick="showAddModal('import')">+ Nhập hàng</button>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Máy</th>
+                            <th>Khe</th>
+                            <th>Sản phẩm</th>
+                            <th>Số lượng</th>
+                            <th>Người nhập</th>
+                            <th>Ngày nhập</th>
+                        </tr>
+                    </thead>
+                    <tbody id="importsTable"></tbody>
+                </table>
+            </div>
+
+            <!-- Devices Tab -->
+            <div id="devices" class="tab-content">
+                <div class="tab-header">
+                    <h2>Quản lý thiết bị IoT</h2>
+                </div>
+                <div class="sub-tabs">
+                    <button class="sub-tab active" onclick="switchDeviceTab('identity')">🔑 Định danh</button>
+                    <button class="sub-tab" onclick="switchDeviceTab('sessions')">📡 Sessions</button>
+                    <button class="sub-tab" onclick="switchDeviceTab('rotations')">🔄 Key Rotations</button>
+                </div>
+
+                <div id="device-identity" class="sub-tab-content active">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Máy ID</th>
+                                <th>MAC Address</th>
+                                <th>Fingerprint</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày cấp</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deviceIdentityTable"></tbody>
+                    </table>
+                </div>
+
+                <div id="device-sessions" class="sub-tab-content">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Session ID</th>
+                                <th>Máy</th>
+                                <th>IP</th>
+                                <th>Phát hành</th>
+                                <th>Hết hạn</th>
+                                <th>Trạng thái</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deviceSessionsTable"></tbody>
+                    </table>
+                </div>
+
+                <div id="device-rotations" class="sub-tab-content">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Máy</th>
+                                <th>Key cũ</th>
+                                <th>Key mới</th>
+                                <th>Người thực hiện</th>
+                                <th>Ngày</th>
+                                <th>Lý do</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deviceRotationsTable"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Security Tab -->
+            <div id="security" class="tab-content">
+                <div class="tab-header">
+                    <h2>Bảo mật & Audit</h2>
+                </div>
+                <div class="sub-tabs">
+                    <button class="sub-tab active" onclick="switchSecurityTab('events')">⚠️ Sự kiện</button>
+                    <button class="sub-tab" onclick="switchSecurityTab('audit')">📋 API Logs</button>
+                    <button class="sub-tab" onclick="switchSecurityTab('access')">🚪 Truy cập</button>
+                </div>
+
+                <div id="security-events" class="sub-tab-content active">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Máy</th>
+                                <th>Loại</th>
+                                <th>Mức độ</th>
+                                <th>Thông điệp</th>
+                                <th>Thời gian</th>
+                                <th>Đã xử lý</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="securityEventsTable"></tbody>
+                    </table>
+                </div>
+
+                <div id="security-audit" class="sub-tab-content">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Máy</th>
+                                <th>Endpoint</th>
+                                <th>Method</th>
+                                <th>IP</th>
+                                <th>Response</th>
+                                <th>Signature</th>
+                                <th>Thời gian</th>
+                            </tr>
+                        </thead>
+                        <tbody id="apiAuditLogsTable"></tbody>
+                    </table>
+                </div>
+
+                <div id="security-access" class="sub-tab-content">
+                    <button class="btn btn-primary" onclick="showAddModal('accessLog')" style="margin-bottom: 15px;">+
+                        Ghi nhận truy cập</button>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Người dùng</th>
+                                <th>Máy</th>
+                                <th>Hành động</th>
+                                <th>Bắt đầu</th>
+                                <th>Kết thúc</th>
+                                <th>Ghi chú</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="accessLogsTable"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Firmware Tab -->
+            <div id="firmware" class="tab-content">
+                <div class="tab-header">
+                    <h2>Cập nhật Firmware OTA</h2>
+                    <button class="btn btn-primary" onclick="showAddModal('firmware')">+ Tạo cập nhật</button>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Máy</th>
+                            <th>Từ version</th>
+                            <th>Đến version</th>
+                            <th>Checksum</th>
+                            <th>Trạng thái</th>
+                            <th>Bắt đầu</th>
+                            <th>Kết thúc</th>
+                            <th>Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="firmwareTable"></tbody>
+                </table>
+            </div>
+
+            <!-- Telemetry Tab -->
+            <div id="telemetry" class="tab-content">
+                <div class="tab-header">
+                    <h2>Dữ liệu Telemetry</h2>
+                    <select id="telemetryMachineFilter" onchange="loadTelemetry()">
+                        <option value="">-- Tất cả máy --</option>
+                    </select>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Máy</th>
+                            <th>Nhiệt độ</th>
+                            <th>Độ ẩm</th>
+                            <th>Điện áp</th>
+                            <th>Cửa mở</th>
+                            <th>Thời gian</th>
+                        </tr>
+                    </thead>
+                    <tbody id="telemetryTable"></tbody>
                 </table>
             </div>
         </div>

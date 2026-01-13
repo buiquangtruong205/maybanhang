@@ -9,13 +9,13 @@ class PaymentItem(BaseModel):
     """Item in payment request"""
     name: str
     quantity: int
-    price: int
+    price: float  # Accept float from database Decimal values
 
 
 class PaymentCreate(BaseModel):
     """Request body for creating payment link"""
     order_code: int
-    amount: int
+    amount: float  # Accept float, will be converted to int for PayOS
     description: str
     items: List[PaymentItem]
     buyer_name: Optional[str] = None

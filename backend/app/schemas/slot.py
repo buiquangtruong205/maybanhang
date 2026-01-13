@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 
@@ -15,6 +16,7 @@ class SlotOut(BaseModel):
     product_id: Optional[int]
     stock: int
     capacity: int
+    created_at: datetime
     
     class Config:
         from_attributes = True

@@ -131,7 +131,7 @@ def update_product(current_user, product_id):
             }), 400
         data = ProductCreate(**json_data)
         
-        product.name = data.name
+        product.product_name = data.product_name
         product.price = data.price
         product.image = data.image
         product.active = data.active

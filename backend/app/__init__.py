@@ -30,6 +30,11 @@ def create_app(config_class=Config):
     from app.routes.transaction import transaction_bp
     from app.routes.stats import stats_bp
     from app.routes.payment import payment_bp
+    from app.routes.import_data import import_data_bp
+    from app.routes.device import device_bp
+    from app.routes.security import security_bp
+    from app.routes.firmware import firmware_bp
+    from app.routes.telemetry import telemetry_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(product_bp, url_prefix='/api')
@@ -40,6 +45,11 @@ def create_app(config_class=Config):
     app.register_blueprint(transaction_bp, url_prefix='/api')
     app.register_blueprint(stats_bp, url_prefix='/api')
     app.register_blueprint(payment_bp, url_prefix='/api')
+    app.register_blueprint(import_data_bp, url_prefix='/api')
+    app.register_blueprint(device_bp, url_prefix='/api')
+    app.register_blueprint(security_bp, url_prefix='/api')
+    app.register_blueprint(firmware_bp, url_prefix='/api')
+    app.register_blueprint(telemetry_bp, url_prefix='/api')
     
     # Homepage
     @app.route('/')

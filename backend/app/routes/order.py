@@ -11,7 +11,7 @@ order_bp = Blueprint('order', __name__)
 @token_required
 def get_orders(current_user):
     # Sắp xếp theo thời gian tạo giảm dần (đơn hàng mới nhất lên đầu)
-    orders = Order.query.order_by(Order.create_at.desc()).all()
+    orders = Order.query.order_by(Order.created_at.desc()).all()
     return jsonify({
         'success': True,
         'message': 'Orders retrieved successfully',
@@ -68,7 +68,8 @@ def create_order():
             product_id=data.product_id,
             price_snapshot=data.price_snapshot,
             slot_id=data.slot_id,
-            status='completed'
+            status_payment='completed',
+            status_slots='completed'
         )
         
         # Giảm stock trong slot
@@ -107,7 +108,7 @@ def create_pending_order():
         
         product_id = json_data.get('product_id')
         price_snapshot = json_data.get('price_snapshot')
-        slot_id = json_data.get('slot_id', 1)  # Default to slot 1
+        slot_id = json_data.get('slot_id')  # Optional - can be None for demo
         
         if not product_id or not price_snapshot:
             return jsonify({
@@ -128,7 +129,8 @@ def create_pending_order():
             product_id=product_id,
             price_snapshot=price_snapshot,
             slot_id=slot_id,
-            status='pending'
+            status_payment='pending',
+            status_slots='pending'
         )
         
         db.session.add(new_order)
@@ -159,7 +161,7 @@ def complete_order(order_id):
                 'message': 'Order not found'
             }), 404
         
-        if order.status == 'completed':
+        if order.status_payment == 'completed':
             return jsonify({
                 'success': True,
                 'message': 'Order already completed',
@@ -167,7 +169,8 @@ def complete_order(order_id):
             })
         
         # Cập nhật status
-        order.status = 'completed'
+        order.status_payment = 'completed'
+        order.status_slots = 'completed'
         
         # Giảm stock trong slot
         slot = Slot.query.get(order.slot_id)
@@ -201,13 +204,14 @@ def cancel_order(order_id):
                 'message': 'Order not found'
             }), 404
         
-        if order.status != 'pending':
+        if order.status_payment != 'pending':
             return jsonify({
                 'success': False,
                 'message': 'Only pending orders can be cancelled'
             }), 400
         
-        order.status = 'cancelled'
+        order.status_payment = 'cancelled'
+        order.status_slots = 'cancelled'
         db.session.commit()
         
         return jsonify({
@@ -238,8 +242,9 @@ def get_order_status(order_id):
             'message': 'Order status retrieved',
             'data': {
                 'order_id': order.order_id,
-                'status': order.status,
-                'created_at': order.create_at.isoformat() if order.create_at else None
+                'status_payment': order.status_payment,
+                'status_slots': order.status_slots,
+                'created_at': order.created_at.isoformat() if order.created_at else None
             }
         })
     

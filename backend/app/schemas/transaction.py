@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from pydantic import BaseModel
 from typing import Optional
@@ -20,6 +21,7 @@ class TransactionOut(BaseModel):
     sender_account: Optional[str]
     sender_bank: Optional[str]
     status: str
+    created_at: datetime
     
     class Config:
         from_attributes = True
