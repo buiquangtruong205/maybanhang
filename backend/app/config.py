@@ -30,7 +30,7 @@ MACHINE_KEYS = {
 
 
 # =============================================================================
-# Application Security Configuration (Layer 3-4)
+# Application Security Configuration (L   ayer 3-4)
 # =============================================================================
 # Timestamp tolerance (seconds) - allow clock drift between ESP32 and server
 TIMESTAMP_TOLERANCE_SECONDS = int(os.environ.get('TIMESTAMP_TOLERANCE', '30'))
