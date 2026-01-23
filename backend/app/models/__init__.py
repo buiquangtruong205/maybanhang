@@ -1,15 +1,16 @@
 from app.models.database import (
     User, Product, Slot, Order, Machine, Transaction,
-    PaymentCallback, ImportData,
-    DeviceIdentity, DeviceSession, DeviceKeyRotation,
-    SecurityEvent, ApiAuditLog, StaffAccessLog,
-    FirmwareUpdate, TelemetryLog
+    PaymentCallback,
+    DeviceIdentity, DeviceSession,
+    ApiAuditLog, StaffAccessLog,
+    WebAuthnCredential
 )
 
 __all__ = [
     'User', 'Product', 'Slot', 'Order', 'Machine', 'Transaction',
-    'PaymentCallback', 'ImportData',
-    'DeviceIdentity', 'DeviceSession', 'DeviceKeyRotation',
-    'SecurityEvent', 'ApiAuditLog', 'StaffAccessLog',
-    'FirmwareUpdate', 'TelemetryLog'
+    'PaymentCallback',
+    'DeviceIdentity', 'DeviceSession',
+    'ApiAuditLog', 'StaffAccessLog',
+    'WebAuthnCredential'
 ]
+

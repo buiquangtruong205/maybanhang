@@ -11,11 +11,11 @@ from app.config import PAYOS_CLIENT_ID, PAYOS_API_KEY, PAYOS_CHECKSUM_KEY, DOMAI
 PAYOS_API_URL = "https://api-merchant.payos.vn/v2"
 
 # Kiểm tra cấu hình PayOS
-print(f"🔍 PayOS ID: {PAYOS_CLIENT_ID[:5] if PAYOS_CLIENT_ID else 'None'}... API: {PAYOS_API_KEY[:5] if PAYOS_API_KEY else 'None'}...")
+print(f"[PayOS] ID: {PAYOS_CLIENT_ID[:5] if PAYOS_CLIENT_ID else 'None'}... API: {PAYOS_API_KEY[:5] if PAYOS_API_KEY else 'None'}...")
 if PAYOS_CLIENT_ID and PAYOS_API_KEY and PAYOS_CHECKSUM_KEY:
-    print("✅ PayOS credentials configured")
+    print("[PayOS] Credentials configured")
 else:
-    print("⚠️ PayOS credentials not configured or empty. Please check .env file.")
+    print("[PayOS] WARNING: Credentials not configured or empty. Please check .env file.")
 
 
 def _create_signature(data_to_sign: dict) -> str:

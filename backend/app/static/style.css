@@ -962,3 +962,71 @@ body {
     font-family: 'Consolas', monospace;
     color: #94a3b8;
 }
+
+/* Passkey / WebAuthn Styles */
+.passkey-divider {
+    display: flex;
+    align-items: center;
+    margin: 20px 0;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.passkey-divider::before,
+.passkey-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.passkey-divider span {
+    padding: 0 15px;
+}
+
+.btn-passkey {
+    background: linear-gradient(135deg, #8b5cf6, #a855f7);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 15px;
+}
+
+.btn-passkey:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(139, 92, 246, 0.3);
+}
+
+.btn-passkey:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-passkey-small {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(168, 85, 247, 0.2));
+    color: #a855f7;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    padding: 8px 12px;
+    font-size: 16px;
+    min-width: 40px;
+}
+
+.btn-passkey-small:hover {
+    background: linear-gradient(135deg, #8b5cf6, #a855f7);
+    color: #fff;
+}
+
+.btn-passkey-small.has-passkey {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.2));
+    color: #22c55e;
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.btn-passkey-small.has-passkey:hover {
+    background: linear-gradient(135deg, #22c55e, #10b981);
+    color: #fff;
+}

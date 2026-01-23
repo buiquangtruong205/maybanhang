@@ -49,23 +49,4 @@ class DeviceSessionOut(BaseModel):
         from_attributes = True
 
 
-# DeviceKeyRotation Schemas
-class DeviceKeyRotationCreate(BaseModel):
-    machine_id: int
-    old_key_fingerprint: Optional[str] = None
-    new_key_fingerprint: str
-    rotated_by_user_id: Optional[int] = None
-    reason: Optional[str] = None
 
-
-class DeviceKeyRotationOut(BaseModel):
-    rotation_id: int
-    machine_id: int
-    old_key_fingerprint: Optional[str]
-    new_key_fingerprint: str
-    rotated_by_user_id: Optional[int]
-    rotated_at: datetime
-    reason: Optional[str]
-
-    class Config:
-        from_attributes = True

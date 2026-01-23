@@ -9,6 +9,22 @@ let machinesCache = [];
 let slotsCache = [];
 let usersCache = [];
 
+// XSS Protection: Escape HTML special characters
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// Stub function for removed Firmware OTA feature
+function loadFirmware() {
+    // OTA Firmware feature has been removed
+    // This stub prevents errors when loadAllData() calls it
+    console.log('Firmware OTA feature disabled');
+    return Promise.resolve();
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     if (token) {
@@ -21,9 +37,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
-    // Login form
-    document.getElementById('loginForm').addEventListener('submit', handleLogin);
-    document.getElementById('registerForm').addEventListener('submit', handleRegister);
+    // Register form (chỉ dùng lần đầu)
+    const registerForm = document.getElementById('registerForm');
+    if (registerForm) {
+        registerForm.addEventListener('submit', handleRegister);
+    }
 
     // Tabs
     document.querySelectorAll('.tab').forEach(tab => {
@@ -120,6 +138,28 @@ function showRegister() {
     document.getElementById('registerModal').style.display = 'flex';
 }
 
+/**
+ * Try to show register page
+ * Check if user already exists, show error if yes, show register form if no
+ */
+async function tryShowRegister() {
+    try {
+        const res = await fetch(`${API_BASE}/users/count`);
+        const data = await res.json();
+
+        if (data.success && data.count > 0) {
+            // Already has user - show error message
+            showToast('Bạn không thể tạo tài khoản do chính sách của web. Hệ thống chỉ cho phép 1 tài khoản.', 'error');
+        } else {
+            // No users - show register form
+            showRegister();
+        }
+    } catch (err) {
+        console.error('Error checking user count:', err);
+        showToast('Lỗi kết nối server', 'error');
+    }
+}
+
 function showApp() {
     document.getElementById('loginModal').style.display = 'none';
     document.getElementById('registerModal').style.display = 'none';
@@ -164,15 +204,7 @@ async function loadAllData() {
         loadSlots(),
         loadOrders(),
         loadTransactions(),
-        loadImports(),
-        loadDeviceIdentities(),
-        loadDeviceSessions(),
-        loadDeviceRotations(),
-        loadSecurityEvents(),
-        loadApiAuditLogs(),
-        loadAccessLogs(),
         loadFirmware(),
-        loadTelemetry(),
         loadUsers()
     ]);
 
@@ -272,77 +304,7 @@ async function loadUsers() {
     }
 }
 
-async function loadImports() {
-    const data = await apiCall('/imports');
-    if (data.success) {
-        renderImports(data.data);
-    }
-}
 
-async function loadDeviceIdentities() {
-    const data = await apiCall('/devices/identity');
-    if (data.success) {
-        renderDeviceIdentities(data.data);
-    }
-}
-
-async function loadDeviceSessions() {
-    const data = await apiCall('/devices/sessions');
-    if (data.success) {
-        renderDeviceSessions(data.data);
-    }
-}
-
-async function loadDeviceRotations() {
-    const data = await apiCall('/devices/key-rotations');
-    if (data.success) {
-        renderDeviceRotations(data.data);
-    }
-}
-
-async function loadSecurityEvents() {
-    const data = await apiCall('/security/events');
-    if (data.success) {
-        renderSecurityEvents(data.data);
-    }
-}
-
-async function loadApiAuditLogs() {
-    const data = await apiCall('/security/audit-logs');
-    if (data.success) {
-        renderApiAuditLogs(data.data);
-    }
-}
-
-async function loadAccessLogs() {
-    const data = await apiCall('/security/access-logs');
-    if (data.success) {
-        renderAccessLogs(data.data);
-    }
-}
-
-async function loadFirmware() {
-    const data = await apiCall('/firmware/updates');
-    if (data.success) {
-        renderFirmware(data.data);
-    }
-}
-
-async function loadTelemetry() {
-    const filter = document.getElementById('telemetryMachineFilter');
-    const machineId = filter ? filter.value : '';
-    const endpoint = machineId ? `/telemetry/machine/${machineId}` : '/telemetry';
-    const data = await apiCall(endpoint);
-    if (data.success) {
-        renderTelemetry(data.data);
-    }
-}
-
-// Helper function to escape HTML for safe JSON in attributes
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 
 // Render functions
 function renderMachines(machines) {
@@ -462,186 +424,7 @@ function renderTransactions(transactions) {
     `).join('');
 }
 
-function renderImports(imports) {
-    const tbody = document.getElementById('importsTable');
-    tbody.innerHTML = imports.map(i => {
-        const machine = machinesCache.find(m => m.machine_id === i.machine_id);
-        const slot = slotsCache.find(s => s.slot_id === i.slot_id);
-        const product = productsCache.find(p => p.product_id === i.product_id);
-        const user = usersCache.find(u => u.user_id === i.user_id);
-        return `
-            <tr>
-                <td>${i.import_id}</td>
-                <td>${machine?.name || i.machine_id}</td>
-                <td>${slot?.slot_code || i.slot_id}</td>
-                <td>${product?.product_name || product?.name || i.product_id}</td>
-                <td>${i.quantity}</td>
-                <td>${user?.username || i.user_id}</td>
-                <td>${formatDate(i.created_at)}</td>
-            </tr>
-        `;
-    }).join('');
-}
 
-function renderDeviceIdentities(identities) {
-    const tbody = document.getElementById('deviceIdentityTable');
-    tbody.innerHTML = identities.map(d => {
-        const machine = machinesCache.find(m => m.machine_id === d.machine_id);
-        return `
-            <tr>
-                <td>${machine?.name || d.machine_id}</td>
-                <td><code>${d.mac_address || '-'}</code></td>
-                <td><code title="${d.cert_fingerprint || ''}">${(d.cert_fingerprint || '-').substring(0, 16)}...</code></td>
-                <td><span class="status status-${d.status}">${d.status}</span></td>
-                <td>${formatDate(d.provisioned_at)}</td>
-                <td class="actions">
-                    ${d.status === 'active' ? `<button class="btn btn-delete" onclick="revokeDeviceIdentity(${d.machine_id})">Thu hồi</button>` : '-'}
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-function renderDeviceSessions(sessions) {
-    const tbody = document.getElementById('deviceSessionsTable');
-    tbody.innerHTML = sessions.map(s => {
-        const machine = machinesCache.find(m => m.machine_id === s.machine_id);
-        return `
-            <tr>
-                <td>${s.session_id}</td>
-                <td>${machine?.name || s.machine_id}</td>
-                <td>${s.ip_address || '-'}</td>
-                <td>${formatDate(s.issued_at)}</td>
-                <td>${formatDate(s.expires_at)}</td>
-                <td><span class="status status-${s.is_revoked ? 'revoked' : 'active'}">${s.is_revoked ? 'Đã thu hồi' : 'Active'}</span></td>
-                <td class="actions">
-                    ${!s.is_revoked ? `<button class="btn btn-delete" onclick="revokeSession(${s.session_id})">Thu hồi</button>` : '-'}
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-function renderDeviceRotations(rotations) {
-    const tbody = document.getElementById('deviceRotationsTable');
-    tbody.innerHTML = rotations.map(r => {
-        const machine = machinesCache.find(m => m.machine_id === r.machine_id);
-        const user = usersCache.find(u => u.user_id === r.rotated_by_user_id);
-        return `
-            <tr>
-                <td>${r.rotation_id}</td>
-                <td>${machine?.name || r.machine_id}</td>
-                <td><code title="${r.old_key_fingerprint || ''}">${(r.old_key_fingerprint || '-').substring(0, 12)}...</code></td>
-                <td><code title="${r.new_key_fingerprint}">${r.new_key_fingerprint.substring(0, 12)}...</code></td>
-                <td>${user?.username || r.rotated_by_user_id || '-'}</td>
-                <td>${formatDate(r.rotated_at)}</td>
-                <td>${r.reason || '-'}</td>
-            </tr>
-        `;
-    }).join('');
-}
-
-function renderSecurityEvents(events) {
-    const tbody = document.getElementById('securityEventsTable');
-    tbody.innerHTML = events.map(e => {
-        const machine = machinesCache.find(m => m.machine_id === e.machine_id);
-        return `
-            <tr>
-                <td>${e.event_id}</td>
-                <td>${machine?.name || e.machine_id || '-'}</td>
-                <td>${e.event_type}</td>
-                <td><span class="status status-severity-${e.severity}">${e.severity}</span></td>
-                <td>${e.message || '-'}</td>
-                <td>${formatDate(e.created_at)}</td>
-                <td><span class="status status-${e.is_resolved ? 'resolved' : 'pending'}">${e.is_resolved ? 'Đã xử lý' : 'Chưa'}</span></td>
-                <td class="actions">
-                    ${!e.is_resolved ? `<button class="btn btn-primary" onclick="resolveSecurityEvent(${e.event_id})">Xử lý</button>` : '-'}
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-function renderApiAuditLogs(logs) {
-    const tbody = document.getElementById('apiAuditLogsTable');
-    tbody.innerHTML = logs.map(l => {
-        const machine = machinesCache.find(m => m.machine_id === l.machine_id);
-        return `
-            <tr>
-                <td>${l.request_id}</td>
-                <td>${machine?.name || l.machine_id || '-'}</td>
-                <td><code>${l.endpoint}</code></td>
-                <td><span class="status status-method-${l.method.toLowerCase()}">${l.method}</span></td>
-                <td>${l.ip_address || '-'}</td>
-                <td><span class="status status-${l.response_code < 400 ? 'success' : 'error'}">${l.response_code}</span></td>
-                <td><span class="status status-${l.signature_ok ? 'true' : 'false'}">${l.signature_ok ? '✓' : '✗'}</span></td>
-                <td>${formatDate(l.created_at)}</td>
-            </tr>
-        `;
-    }).join('');
-}
-
-function renderAccessLogs(logs) {
-    const tbody = document.getElementById('accessLogsTable');
-    tbody.innerHTML = logs.map(l => {
-        const user = usersCache.find(u => u.user_id === l.user_id);
-        const machine = machinesCache.find(m => m.machine_id === l.machine_id);
-        return `
-            <tr>
-                <td>${l.access_id}</td>
-                <td>${user?.username || l.user_id || '-'}</td>
-                <td>${machine?.name || l.machine_id}</td>
-                <td><span class="status status-action-${l.action}">${l.action}</span></td>
-                <td>${formatDate(l.started_at)}</td>
-                <td>${l.ended_at ? formatDate(l.ended_at) : '<em>Đang mở</em>'}</td>
-                <td>${l.note || '-'}</td>
-                <td class="actions">
-                    ${!l.ended_at ? `<button class="btn btn-primary" onclick="endAccessLog(${l.access_id})">Kết thúc</button>` : '-'}
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-function renderFirmware(updates) {
-    const tbody = document.getElementById('firmwareTable');
-    tbody.innerHTML = updates.map(u => {
-        const machine = machinesCache.find(m => m.machine_id === u.machine_id);
-        return `
-            <tr>
-                <td>${u.update_id}</td>
-                <td>${machine?.name || u.machine_id}</td>
-                <td>${u.from_version || '-'}</td>
-                <td>${u.to_version}</td>
-                <td><code title="${u.checksum || ''}">${(u.checksum || '-').substring(0, 12)}...</code></td>
-                <td><span class="status status-firmware-${u.status}">${u.status}</span></td>
-                <td>${u.started_at ? formatDate(u.started_at) : '-'}</td>
-                <td>${u.finished_at ? formatDate(u.finished_at) : '-'}</td>
-                <td class="actions">
-                    ${u.status === 'pending' ? `<button class="btn btn-delete" onclick="deleteFirmwareUpdate(${u.update_id})">Xóa</button>` : '-'}
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-function renderTelemetry(logs) {
-    const tbody = document.getElementById('telemetryTable');
-    tbody.innerHTML = logs.map(l => {
-        const machine = machinesCache.find(m => m.machine_id === l.machine_id);
-        return `
-            <tr>
-                <td>${l.log_id}</td>
-                <td>${machine?.name || l.machine_id}</td>
-                <td>${l.temperature !== null ? l.temperature.toFixed(1) + '°C' : '-'}</td>
-                <td>${l.humidity !== null ? l.humidity.toFixed(1) + '%' : '-'}</td>
-                <td>${l.voltage !== null ? l.voltage.toFixed(2) + 'V' : '-'}</td>
-                <td><span class="status status-${l.door_open ? 'warning' : 'success'}">${l.door_open ? '🚪 Mở' : '✓ Đóng'}</span></td>
-                <td>${formatDate(l.ts)}</td>
-            </tr>
-        `;
-    }).join('');
-}
 
 // Action handlers for new features
 async function revokeDeviceIdentity(machineId) {
@@ -1153,3 +936,341 @@ async function uploadImage(file) {
     });
     return await res.json();
 }
+
+// =======================
+// WebAuthn / Passkey Functions
+// =======================
+
+/**
+ * Check if WebAuthn is supported by the browser
+ */
+function isWebAuthnSupported() {
+    return window.PublicKeyCredential !== undefined;
+}
+
+/**
+ * Convert base64url to ArrayBuffer
+ */
+function base64urlToBuffer(base64url) {
+    const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+    const padLen = (4 - base64.length % 4) % 4;
+    const padded = base64 + '='.repeat(padLen);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+/**
+ * Convert ArrayBuffer to base64url
+ */
+function bufferToBase64url(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+/**
+ * Check passkey status for current user
+ */
+async function checkPasskeyStatus() {
+    if (!token) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/webauthn/status`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        const passkeyBtn = document.getElementById('passkeyBtn');
+        if (passkeyBtn && data.success) {
+            if (data.data.has_passkey) {
+                passkeyBtn.classList.add('has-passkey');
+                passkeyBtn.title = `Passkey: ${data.data.device_name || 'Registered'}`;
+            } else {
+                passkeyBtn.classList.remove('has-passkey');
+                passkeyBtn.title = 'Đăng ký Passkey';
+            }
+        }
+    } catch (err) {
+        console.error('Error checking passkey status:', err);
+    }
+}
+
+/**
+ * Register a new Passkey for the current user
+ */
+async function registerPasskey() {
+    if (!isWebAuthnSupported()) {
+        showToast('Trình duyệt không hỗ trợ Passkey', 'error');
+        return;
+    }
+
+    if (!token) {
+        showToast('Vui lòng đăng nhập trước', 'error');
+        return;
+    }
+
+    try {
+        showToast('Đang khởi tạo đăng ký Passkey...', 'info');
+
+        // Step 1: Get registration options from server
+        const beginRes = await fetch(`${API_BASE}/webauthn/register/begin`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        const beginData = await beginRes.json();
+
+        if (!beginData.success) {
+            showToast(beginData.message, 'error');
+            return;
+        }
+
+        // Parse the options
+        const options = JSON.parse(beginData.data);
+
+        // Convert base64url fields to ArrayBuffer
+        options.challenge = base64urlToBuffer(options.challenge);
+        options.user.id = base64urlToBuffer(options.user.id);
+
+        if (options.excludeCredentials) {
+            options.excludeCredentials = options.excludeCredentials.map(cred => ({
+                ...cred,
+                id: base64urlToBuffer(cred.id)
+            }));
+        }
+
+        // Step 2: Create credential using WebAuthn API
+        const credential = await navigator.credentials.create({
+            publicKey: options
+        });
+
+        // Convert credential to JSON-serializable format
+        const credentialData = {
+            id: credential.id,
+            rawId: bufferToBase64url(credential.rawId),
+            type: credential.type,
+            response: {
+                clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                attestationObject: bufferToBase64url(credential.response.attestationObject)
+            },
+            device_name: navigator.platform || 'Unknown Device'
+        };
+
+        // Add transports if available
+        if (credential.response.getTransports) {
+            credentialData.response.transports = credential.response.getTransports();
+        }
+
+        // Step 3: Send credential to server
+        const completeRes = await fetch(`${API_BASE}/webauthn/register/complete`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(credentialData)
+        });
+        const completeData = await completeRes.json();
+
+        if (completeData.success) {
+            showToast('Đăng ký Passkey thành công! 🎉', 'success');
+            checkPasskeyStatus();
+        } else {
+            showToast(completeData.message, 'error');
+        }
+
+    } catch (err) {
+        if (err.name === 'NotAllowedError') {
+            showToast('Đăng ký bị hủy hoặc hết thời gian', 'error');
+        } else {
+            console.error('Passkey registration error:', err);
+            showToast(`Lỗi đăng ký Passkey: ${err.message}`, 'error');
+        }
+    }
+}
+
+/**
+ * Login using Passkey
+ */
+async function loginWithPasskey() {
+    if (!isWebAuthnSupported()) {
+        showToast('Trình duyệt không hỗ trợ Passkey', 'error');
+        return;
+    }
+
+    try {
+        // Get username if provided
+        const username = document.getElementById('username')?.value || '';
+
+        showToast('Đang khởi tạo đăng nhập Passkey...', 'info');
+
+        // Step 1: Get authentication options from server
+        const beginRes = await fetch(`${API_BASE}/webauthn/login/begin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username || null })
+        });
+        const beginData = await beginRes.json();
+
+        if (!beginData.success) {
+            showToast(beginData.message, 'error');
+            return;
+        }
+
+        // Parse the options
+        const options = JSON.parse(beginData.data);
+        const sessionKey = beginData.session_key;
+
+        // Convert base64url fields to ArrayBuffer
+        options.challenge = base64urlToBuffer(options.challenge);
+
+        if (options.allowCredentials) {
+            options.allowCredentials = options.allowCredentials.map(cred => ({
+                ...cred,
+                id: base64urlToBuffer(cred.id)
+            }));
+        }
+
+        // Step 2: Get credential using WebAuthn API
+        const assertion = await navigator.credentials.get({
+            publicKey: options
+        });
+
+        // Convert assertion to JSON-serializable format
+        const assertionData = {
+            id: assertion.id,
+            rawId: bufferToBase64url(assertion.rawId),
+            type: assertion.type,
+            response: {
+                clientDataJSON: bufferToBase64url(assertion.response.clientDataJSON),
+                authenticatorData: bufferToBase64url(assertion.response.authenticatorData),
+                signature: bufferToBase64url(assertion.response.signature)
+            },
+            session_key: sessionKey
+        };
+
+        // Add userHandle if available
+        if (assertion.response.userHandle) {
+            assertionData.response.userHandle = bufferToBase64url(assertion.response.userHandle);
+        }
+
+        // Step 3: Send assertion to server
+        const completeRes = await fetch(`${API_BASE}/webauthn/login/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(assertionData)
+        });
+        const completeData = await completeRes.json();
+
+        if (completeData.success) {
+            token = completeData.data.access_token;
+            localStorage.setItem('token', token);
+            currentUser = { username: completeData.data.username };
+            showApp();
+            showToast('Đăng nhập Passkey thành công! 🔑', 'success');
+        } else {
+            showToast(completeData.message, 'error');
+        }
+
+    } catch (err) {
+        if (err.name === 'NotAllowedError') {
+            showToast('Đăng nhập bị hủy hoặc hết thời gian', 'error');
+        } else {
+            console.error('Passkey login error:', err);
+            showToast(`Lỗi đăng nhập Passkey: ${err.message}`, 'error');
+        }
+    }
+}
+
+/**
+ * Manage Passkey (register new or remove existing)
+ */
+async function managePasskey() {
+    if (!token) {
+        showToast('Vui lòng đăng nhập trước', 'error');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/webauthn/status`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+            showToast(data.message, 'error');
+            return;
+        }
+
+        if (data.data.has_passkey) {
+            // User already has passkey - show info and ask if they want to remove
+            const deviceName = data.data.device_name || 'Unknown';
+            const createdAt = data.data.created_at ? new Date(data.data.created_at).toLocaleDateString('vi-VN') : 'Unknown';
+            const lastUsed = data.data.last_used_at ? new Date(data.data.last_used_at).toLocaleString('vi-VN') : 'Chưa sử dụng';
+
+            const confirmRemove = confirm(
+                `Bạn đã có Passkey:\n\n` +
+                `• Thiết bị: ${deviceName}\n` +
+                `• Ngày tạo: ${createdAt}\n` +
+                `• Lần cuối sử dụng: ${lastUsed}\n\n` +
+                `Bạn có muốn XÓA Passkey này không?\n\n` +
+                `⚠️ Bạn sẽ cần nhập mật khẩu để xác nhận.`
+            );
+
+            if (confirmRemove) {
+                // Ask for password to confirm removal
+                const password = prompt('Nhập mật khẩu để xác nhận xóa Passkey:');
+
+                if (!password) {
+                    showToast('Đã hủy xóa Passkey', 'info');
+                    return;
+                }
+
+                // Remove passkey with password confirmation
+                const removeRes = await fetch(`${API_BASE}/webauthn/remove`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password })
+                });
+                const removeData = await removeRes.json();
+
+                if (removeData.success) {
+                    showToast('Đã xóa Passkey thành công', 'success');
+                    checkPasskeyStatus();
+                } else {
+                    showToast(removeData.message, 'error');
+                }
+            }
+        } else {
+            // No passkey - ask if they want to register
+            if (confirm('Bạn chưa có Passkey.\n\nPasskey cho phép đăng nhập nhanh và an toàn mà không cần mật khẩu.\n\n⚠️ LƯU Ý: Nếu bạn bật sync passkey (iCloud Keychain / Google Password Manager), passkey có thể đồng bộ sang thiết bị khác.\n\nBạn có muốn đăng ký Passkey không?')) {
+                registerPasskey();
+            }
+        }
+
+    } catch (err) {
+        console.error('Error managing passkey:', err);
+        showToast('Lỗi khi quản lý Passkey', 'error');
+    }
+}
+
+// Update showApp to check passkey status
+const originalShowApp = showApp;
+showApp = function () {
+    originalShowApp();
+    checkPasskeyStatus();
+};
+

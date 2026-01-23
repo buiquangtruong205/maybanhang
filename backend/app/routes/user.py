@@ -8,6 +8,17 @@ from app.utils import token_required
 
 user_bp = Blueprint('user', __name__)
 
+
+@user_bp.route('/users/count', methods=['GET'])
+def get_user_count():
+    """Check số lượng users (public endpoint cho first-time setup check)"""
+    count = User.query.count()
+    return jsonify({
+        'success': True,
+        'count': count
+    })
+
+
 @user_bp.route('/users', methods=['GET'])
 @token_required
 def get_users(current_user):

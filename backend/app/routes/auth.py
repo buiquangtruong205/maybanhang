@@ -11,6 +11,14 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route('/register', methods=['POST'])
 def register():
     try:
+        # Kiểm tra đã có tài khoản nào chưa - chỉ cho phép 1 tài khoản duy nhất
+        existing_user_count = User.query.count()
+        if existing_user_count > 0:
+            return jsonify({
+                'success': False,
+                'message': 'Hệ thống chỉ cho phép 1 tài khoản. Không thể đăng ký thêm.'
+            }), 403
+        
         json_data = request.get_json(force=True, silent=True)
         if not json_data:
             return jsonify({

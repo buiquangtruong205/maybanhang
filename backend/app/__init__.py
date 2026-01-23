@@ -1,8 +1,9 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request, g
 from flask_sqlalchemy import SQLAlchemy
-from app.config import Config
+from app.config import Config, MACHINE_KEYS
 from werkzeug.exceptions import HTTPException
 import os
+import hashlib
 
 db = SQLAlchemy()
 
@@ -10,15 +11,68 @@ def create_app(config_class=Config):
     app = Flask(__name__, static_folder='static')
     app.config.from_object(config_class)
     
-    # Enable CORS for all routes
+    # Before request - capture machine_id if present
+    @app.before_request
+    def before_request():
+        g.machine_id = None
+        g.machine_key = None
+        
+        # Check for machine key in headers
+        machine_key = request.headers.get('X-Machine-Key')
+        if not machine_key:
+            # Check in JSON body
+            json_data = request.get_json(force=True, silent=True)
+            if json_data:
+                machine_key = json_data.get('machine_key')
+        if not machine_key:
+            # Check in query params
+            machine_key = request.args.get('machine_key')
+        
+        if machine_key:
+            g.machine_key = machine_key
+            g.machine_id = MACHINE_KEYS.get(machine_key)
+    
+    # Enable CORS for all routes and log API calls
     @app.after_request
     def after_request(response):
+        # CORS headers
         response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Machine-Key')
         response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        
+        # Log IoT API calls to database (skip OPTIONS requests)
+        if request.path.startswith('/api/iot') and request.method != 'OPTIONS':
+            try:
+                from app.models import ApiAuditLog
+                
+                # Get payload hash
+                payload_hash = None
+                if request.data:
+                    payload_hash = hashlib.sha256(request.data).hexdigest()[:64]
+                
+                # Determine if signature/key is valid
+                signature_ok = g.machine_id is not None if hasattr(g, 'machine_id') else False
+                
+                audit_log = ApiAuditLog(
+                    machine_id=g.machine_id if hasattr(g, 'machine_id') else None,
+                    endpoint=request.path,
+                    method=request.method,
+                    ip_address=request.remote_addr,
+                    response_code=response.status_code,
+                    payload_hash=payload_hash,
+                    signature_ok=signature_ok
+                )
+                db.session.add(audit_log)
+                db.session.commit()
+            except Exception as e:
+                # Don't fail the request if logging fails
+                print(f"Audit log error: {e}")
+                db.session.rollback()
+        
         return response
     
     db.init_app(app)
+
     
     # Register blueprints
     from app.routes.auth import auth_bp
@@ -27,14 +81,13 @@ def create_app(config_class=Config):
     from app.routes.order import order_bp
     from app.routes.machine import machine_bp
     from app.routes.user import user_bp
+    from app.routes.device import device_bp
+
+    from app.routes.iot import iot_bp
     from app.routes.transaction import transaction_bp
     from app.routes.stats import stats_bp
     from app.routes.payment import payment_bp
-    from app.routes.import_data import import_data_bp
-    from app.routes.device import device_bp
-    from app.routes.security import security_bp
-    from app.routes.firmware import firmware_bp
-    from app.routes.telemetry import telemetry_bp
+    from app.routes.webauthn import webauthn_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(product_bp, url_prefix='/api')
@@ -45,11 +98,10 @@ def create_app(config_class=Config):
     app.register_blueprint(transaction_bp, url_prefix='/api')
     app.register_blueprint(stats_bp, url_prefix='/api')
     app.register_blueprint(payment_bp, url_prefix='/api')
-    app.register_blueprint(import_data_bp, url_prefix='/api')
     app.register_blueprint(device_bp, url_prefix='/api')
-    app.register_blueprint(security_bp, url_prefix='/api')
-    app.register_blueprint(firmware_bp, url_prefix='/api')
-    app.register_blueprint(telemetry_bp, url_prefix='/api')
+
+    app.register_blueprint(iot_bp, url_prefix='/api')
+    app.register_blueprint(webauthn_bp, url_prefix='/api')
     
     # Homepage
     @app.route('/')

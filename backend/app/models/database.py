@@ -135,24 +135,7 @@ class PaymentCallback(db.Model):
     order = db.relationship("Order", backref="payment_callbacks")
 
 
-# =======================
-# 5) Nhập hàng/Audit kho
-# =======================
-class ImportData(db.Model, TimestampMixin):
-    __tablename__ = "importdata"
 
-    import_id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False, index=True)
-    machine_id = db.Column(db.Integer, db.ForeignKey("machines.machine_id"), nullable=False, index=True)
-    slot_id = db.Column(db.Integer, db.ForeignKey("slots.slot_id"), nullable=False, index=True)
-    product_id = db.Column(db.Integer, db.ForeignKey("products.product_id"), nullable=False, index=True)
-
-    quantity = db.Column(db.Integer, nullable=False)
-
-    user = db.relationship("User", backref="import_logs")
-    machine = db.relationship("Machine", backref="import_logs")
-    slot = db.relationship("Slot", backref="import_logs")
-    product = db.relationship("Product", backref="import_logs")
 
 
 # =======================
@@ -194,43 +177,8 @@ class DeviceSession(db.Model):
     machine = db.relationship("Machine", backref="device_sessions")
 
 
-class DeviceKeyRotation(db.Model):
-    __tablename__ = "device_key_rotation"
-
-    rotation_id = db.Column(db.Integer, primary_key=True)
-    machine_id = db.Column(db.Integer, db.ForeignKey("machines.machine_id"), nullable=False, index=True)
-
-    old_key_fingerprint = db.Column(db.String(128), nullable=True)
-    new_key_fingerprint = db.Column(db.String(128), nullable=False, index=True)
-
-    rotated_by_user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True, index=True)
-    rotated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
-    reason = db.Column(db.Text, nullable=True)
-
-    machine = db.relationship("Machine", backref="key_rotations")
-    rotated_by = db.relationship("User", backref="key_rotations")
 
 
-# =======================
-# 7) Bảo mật/Audit logs
-# =======================
-class SecurityEvent(db.Model):
-    __tablename__ = "security_events"
-
-    event_id = db.Column(db.BigInteger, primary_key=True)
-    machine_id = db.Column(db.Integer, db.ForeignKey("machines.machine_id"), nullable=True, index=True)
-
-    event_type = db.Column(db.String(50), nullable=False, index=True)
-    severity = db.Column(db.String(10), default="low", nullable=False, index=True)  # low/medium/high/critical
-    message = db.Column(db.Text, nullable=True)
-
-    detail_json = db.Column(db.JSON, nullable=True)  # nếu DB không support JSON -> Text
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
-    is_resolved = db.Column(db.Boolean, default=False, nullable=False, index=True)
-    resolved_at = db.Column(db.DateTime, nullable=True)
-
-    machine = db.relationship("Machine", backref="security_events")
 
 
 class ApiAuditLog(db.Model):
@@ -268,48 +216,36 @@ class StaffAccessLog(db.Model):
     machine = db.relationship("Machine", backref="access_logs")
 
 
-# =======================
-# 8) OTA / Firmware
-# =======================
-class FirmwareUpdate(db.Model):
-    __tablename__ = "firmware_updates"
-
-    update_id = db.Column(db.Integer, primary_key=True)
-    machine_id = db.Column(db.Integer, db.ForeignKey("machines.machine_id"), nullable=False, index=True)
-
-    from_version = db.Column(db.String(50), nullable=True)
-    to_version = db.Column(db.String(50), nullable=False, index=True)
-
-    checksum = db.Column(db.String(128), nullable=True, index=True)
-    status = db.Column(db.String(20), default="pending", nullable=False, index=True)
-    # pending/downloading/applying/success/failed
-
-    started_at = db.Column(db.DateTime, nullable=True, index=True)
-    finished_at = db.Column(db.DateTime, nullable=True, index=True)
-    error_message = db.Column(db.Text, nullable=True)
-
-    machine = db.relationship("Machine", backref="firmware_updates")
-
 
 # =======================
-# 9) Monitoring (khuyến nghị)
+# 9) WebAuthn / Passkey
 # =======================
-class TelemetryLog(db.Model):
-    __tablename__ = "telemetry_logs"
-
-    log_id = db.Column(db.BigInteger, primary_key=True)
-    machine_id = db.Column(db.Integer, db.ForeignKey("machines.machine_id"), nullable=False, index=True)
-
-    ts = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
-    temperature = db.Column(db.Float, nullable=True)
-    humidity = db.Column(db.Float, nullable=True)
-    voltage = db.Column(db.Float, nullable=True)
-    door_open = db.Column(db.Boolean, nullable=True, index=True)
-
-    metrics_json = db.Column(db.JSON, nullable=True)  # mở rộng sensor
-
-    machine = db.relationship("Machine", backref="telemetry_logs")
-
-    __table_args__ = (
-        db.Index("ix_telemetry_machine_ts", "machine_id", "ts"),
-    )
+class WebAuthnCredential(db.Model, TimestampMixin):
+    """
+    Lưu trữ Passkey/WebAuthn credentials.
+    Mỗi user chỉ được phép có 1 credential (1 passkey).
+    
+    LƯU Ý: Nếu user bật sync passkey (iCloud Keychain / Google Password Manager),
+    passkey có thể sync sang thiết bị khác. Đây là "1 credential" không phải "1 thiết bị vật lý".
+    """
+    __tablename__ = "webauthn_credentials"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), unique=True, nullable=False, index=True)
+    
+    # Credential data từ WebAuthn
+    credential_id = db.Column(db.LargeBinary, unique=True, nullable=False)
+    public_key = db.Column(db.LargeBinary, nullable=False)
+    sign_count = db.Column(db.Integer, default=0, nullable=False)
+    
+    # Transports - để browser biết cách giao tiếp với authenticator
+    transports = db.Column(db.String(200), nullable=True)  # JSON array: ["internal", "hybrid", "usb", ...]
+    
+    # Thông tin thiết bị
+    aaguid = db.Column(db.String(36), nullable=True)  # Authenticator model identifier
+    device_name = db.Column(db.String(100), nullable=True)  # Human-readable device name
+    
+    # Audit fields
+    last_used_at = db.Column(db.DateTime, nullable=True, index=True)  # Lần cuối đăng nhập bằng passkey
+    
+    user = db.relationship("User", backref=db.backref("webauthn_credential", uselist=False))
