@@ -288,6 +288,25 @@ def create_order_from_machine(machine_id):
                 'success': False,
                 'message': 'Product is not active'
             }), 400
+            
+        # If slot was not specified, find a slot with this product and sufficient stock
+        if not slot:
+            slot = Slot.query.filter_by(machine_id=machine_id, product_id=product_id)\
+                             .filter(Slot.stock >= quantity)\
+                             .first()
+            if not slot:
+                 # Check if any slot has this product (for better error message)
+                 any_slot = Slot.query.filter_by(machine_id=machine_id, product_id=product_id).first()
+                 if any_slot:
+                     return jsonify({
+                        'success': False, 
+                        'message': f'Insufficient stock. Product available in slot {any_slot.slot_code} but stock too low.'
+                     }), 400
+                 else:
+                     return jsonify({
+                        'success': False, 
+                        'message': 'Product is not assigned to any slot in this machine'
+                     }), 400
         
         # Kiểm tra stock
         if slot and slot.stock < quantity:
@@ -304,6 +323,7 @@ def create_order_from_machine(machine_id):
             product_id=product_id,
             slot_id=slot.slot_id if slot else None,
             price_snapshot=price_snapshot,
+            quantity=quantity,
             status_payment='pending',
             status_slots='pending'
         )
@@ -378,6 +398,60 @@ def check_order_payment(machine_id, order_id):
         })
         
     except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        }), 500
+
+
+@iot_bp.route('/iot/logs', methods=['POST'])
+@machine_key_required
+def upload_device_logs(machine_id):
+    """
+    Upload readable logs from device (errors, warnings, debug info)
+    
+    Request:
+        Header: X-Machine-Key: may1
+        Body: {
+            "level": "error",           # info, warning, error
+            "message": "Sensor malfunction",
+            "data": {"sensor": "temp", "code": 500}
+        }
+    """
+    from app.models import DeviceLog
+    
+    try:
+        json_data = request.get_json(force=True, silent=True) or {}
+        
+        level = json_data.get('level', 'info')
+        message = json_data.get('message', '')
+        data = json_data.get('data')
+        
+        if not message:
+            return jsonify({
+                'success': False,
+                'message': 'Log message is required'
+            }), 400
+            
+        new_log = DeviceLog(
+            machine_id=machine_id,
+            level=level,
+            message=message,
+            data=data
+        )
+        
+        db.session.add(new_log)
+        db.session.commit()
+        
+        print(f"📝 Device Log [{level}] from machine {machine_id}: {message}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Log saved successfully'
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
         return jsonify({
             'success': False,
             'message': f'Error: {str(e)}'

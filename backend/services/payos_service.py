@@ -54,9 +54,10 @@ def create_payment_link(
 ) -> dict:
     """
     Tạo link thanh toán PayOS (không dùng thư viện).
+    Tự động tạo order_code duy nhất để tránh lỗi duplicate.
     
     Args:
-        order_code: Mã đơn hàng (unique)
+        order_code: Mã đơn hàng gốc (order_id từ database)
         amount: Số tiền (VND)
         description: Mô tả đơn hàng
         items: Danh sách sản phẩm [{"name": str, "quantity": int, "price": int}]
@@ -72,16 +73,27 @@ def create_payment_link(
         return {"success": False, "error": "PayOS not configured. Check credentials in .env file"}
     
     try:
+        import time
+        
+        # Tạo unique payment_code bằng cách kết hợp order_id với timestamp
+        # Format: order_id * 10000 + random suffix (để tránh trùng khi tạo nhiều lần)
+        # VD: order_id=3 -> payment_code = 30000 + (seconds % 9999) = 30001, 30002, ...
+        timestamp_suffix = int(time.time()) % 9999 + 1  # 1-9999
+        unique_payment_code = order_code * 10000 + timestamp_suffix
+        
+        print(f"🔢 Generated unique payment_code: {unique_payment_code} (from order_id: {order_code})")
+        
         return_url = f"{DOMAIN}/api/payment/success"
         cancel_url = f"{DOMAIN}/api/payment/cancel"
         
         # 1. Chuẩn bị dữ liệu để tạo chữ ký (Signature)
         # PayOS yêu cầu sắp xếp theo alphabet: amount, cancelUrl, description, orderCode, returnUrl
+        # Sử dụng unique_payment_code để tránh lỗi duplicate
         data_to_sign = {
             "amount": amount,
             "cancelUrl": cancel_url,
             "description": description,
-            "orderCode": order_code,
+            "orderCode": unique_payment_code,  # Dùng unique code thay vì order_id
             "returnUrl": return_url
         }
         
@@ -111,7 +123,7 @@ def create_payment_link(
             "Content-Type": "application/json"
         }
         
-        print(f"📤 Creating payment: order_code={order_code}, amount={amount}")
+        print(f"📤 Creating payment: payment_code={unique_payment_code}, order_id={order_code}, amount={amount}")
         
         # 4. Gửi request
         url = f"{PAYOS_API_URL}/payment-requests"
@@ -130,7 +142,8 @@ def create_payment_link(
             return {
                 "success": True,
                 "checkout_url": checkout_url,
-                "qr_code": qr_code
+                "qr_code": qr_code,
+                "payment_code": unique_payment_code  # Trả về payment_code để tracking
             }
         else:
             error_msg = resp_data.get("desc") or resp_data.get("message") or "Unknown error"

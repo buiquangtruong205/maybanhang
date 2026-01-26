@@ -18,11 +18,28 @@ function escapeHtml(str) {
 }
 
 // Stub function for removed Firmware OTA feature
-function loadFirmware() {
-    // OTA Firmware feature has been removed
-    // This stub prevents errors when loadAllData() calls it
-    console.log('Firmware OTA feature disabled');
-    return Promise.resolve();
+// Load Firmware Updates
+async function loadFirmware() {
+    const data = await apiCall('/firmware/updates');
+    if (data.success) {
+        renderFirmwareUpdates(data.data);
+    }
+}
+
+function renderFirmwareUpdates(updates) {
+    const tbody = document.getElementById('deviceFirmwareTable');
+    if (!tbody) return;
+
+    tbody.innerHTML = updates.map(u => `
+        <tr>
+            <td>${u.update_id}</td>
+            <td>${u.machine_id}</td>
+            <td>${u.from_version} ➝ <b>${u.to_version}</b></td>
+            <td><span class="status status-${u.status}">${u.status}</span></td>
+            <td>${formatDate(u.deployed_at)}</td>
+            <td>${formatDate(u.completed_at)}</td>
+        </tr>
+    `).join('');
 }
 
 // Initialize
@@ -1406,3 +1423,46 @@ showApp = function () {
     checkPasskeyStatus();
 };
 
+// Load Device Logs
+async function loadDeviceLogs() {
+    const data = await apiCall('/devices/logs');
+    if (data.success) {
+        renderDeviceLogs(data.data);
+    }
+}
+
+// Render Device Logs
+function renderDeviceLogs(logs) {
+    const tbody = document.getElementById('deviceLogsTable');
+    if (!tbody) return;
+
+    tbody.innerHTML = logs.map(log => {
+        let content = log.message;
+        if (log.data) {
+            content += `<br><small style="color:var(--text-muted); font-family:monospace">${escapeHtml(JSON.stringify(log.data))}</small>`;
+        }
+
+        let levelClass = 'status-info'; // default
+        if (log.level === 'error') levelClass = 'status-inactive'; // red
+        else if (log.level === 'warning') levelClass = 'status-maintenance'; // orange
+        else if (log.level === 'info') levelClass = 'status-active'; // green
+
+        return `
+            <tr>
+                <td>${log.log_id}</td>
+                <td>${log.machine_id}</td>
+                <td><span class="status ${levelClass}">${log.level}</span></td>
+                <td>${content}</td>
+                <td>${log.data ? '✅' : '-'}</td>
+                <td>${formatDate(log.created_at)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Update loadAllData to include logs
+const originalLoadAllData = loadAllData;
+loadAllData = async function () {
+    await originalLoadAllData();
+    await loadDeviceLogs();
+};

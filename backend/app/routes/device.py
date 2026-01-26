@@ -169,4 +169,46 @@ def revoke_session(current_user, session_id):
     })
 
 
+@device_bp.route('/devices/logs', methods=['GET'])
+@token_required
+def get_device_logs(current_user):
+    """Get all device logs with pagination"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    machine_id = request.args.get('machine_id', type=int)
+    
+    from app.models import DeviceLog
+    
+    query = DeviceLog.query
+    if machine_id:
+        query = query.filter_by(machine_id=machine_id)
+        
+    pagination = query.order_by(DeviceLog.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    logs = []
+    for log in pagination.items:
+        logs.append({
+            'log_id': log.log_id,
+            'machine_id': log.machine_id,
+            'level': log.level,
+            'message': log.message,
+            'data': log.data,
+            'created_at': log.created_at.isoformat()
+        })
+        
+    return jsonify({
+        'success': True,
+        'message': 'Device logs retrieved successfully',
+        'data': logs,
+        'meta': {
+            'page': page,
+            'per_page': per_page,
+            'total': pagination.total,
+            'pages': pagination.pages
+        }
+    })
+
+
 

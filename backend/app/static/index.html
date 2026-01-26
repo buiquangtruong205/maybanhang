@@ -217,14 +217,32 @@
             <!-- Devices Tab -->
             <div id="devices" class="tab-content">
                 <div class="tab-header">
-                    <h2>Quản lý thiết bị IoT</h2>
+                    <h2>Quản lý Log & Thiết bị</h2>
                 </div>
                 <div class="sub-tabs">
-                    <button class="sub-tab active" onclick="switchDeviceTab('identity')">🔑 Định danh</button>
+                    <button class="sub-tab active" onclick="switchDeviceTab('logs')">📜 Nhật ký</button>
+                    <button class="sub-tab" onclick="switchDeviceTab('identity')">🔑 Định danh</button>
                     <button class="sub-tab" onclick="switchDeviceTab('sessions')">📡 Sessions</button>
+                    <button class="sub-tab" onclick="switchDeviceTab('firmware')">💿 Firmware</button>
                 </div>
 
-                <div id="device-identity" class="sub-tab-content active">
+                <div id="device-logs" class="sub-tab-content active">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Log ID</th>
+                                <th>Máy</th>
+                                <th>Level</th>
+                                <th>Nội dung</th>
+                                <th>Data</th>
+                                <th>Thời gian</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deviceLogsTable"></tbody>
+                    </table>
+                </div>
+
+                <div id="device-identity" class="sub-tab-content">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -257,6 +275,24 @@
                     </table>
                 </div>
 
+                <div id="device-firmware" class="sub-tab-content">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Update ID</th>
+                                <th>Máy</th>
+                                <th>Version</th>
+                                <th>Trạng thái</th>
+                                <th>Deployed At</th>
+                                <th>Completed At</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deviceFirmwareTable"></tbody>
+                    </table>
+                </div>
+
+
+
 
             </div>
 
@@ -284,7 +320,7 @@
         <img id="previewImage" src="" alt="Preview">
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=2"></script>
 </body>
 
 </html>

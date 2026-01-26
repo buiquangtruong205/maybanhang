@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, send_from_directory, request, g
 from flask_sqlalchemy import SQLAlchemy
 from app.config import Config, MACHINE_KEYS
+from app.websocket import socketio
 from werkzeug.exceptions import HTTPException
 import os
 import hashlib
@@ -10,6 +11,9 @@ db = SQLAlchemy()
 def create_app(config_class=Config):
     app = Flask(__name__, static_folder='static')
     app.config.from_object(config_class)
+    
+    # Initialize SocketIO with the app
+    socketio.init_app(app)
     
     # Before request - capture machine_id if present
     @app.before_request
@@ -41,7 +45,7 @@ def create_app(config_class=Config):
         response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
         
         # Log IoT API calls to database (skip OPTIONS requests)
-        if request.path.startswith('/api/iot') and request.method != 'OPTIONS':
+        if (request.path.startswith('/api/iot') or request.path.startswith('/api/devices')) and request.method != 'OPTIONS':
             try:
                 from app.models import ApiAuditLog
                 
@@ -88,6 +92,7 @@ def create_app(config_class=Config):
     from app.routes.stats import stats_bp
     from app.routes.payment import payment_bp
     from app.routes.webauthn import webauthn_bp
+    from app.routes.firmware import firmware_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(product_bp, url_prefix='/api')
@@ -102,6 +107,7 @@ def create_app(config_class=Config):
 
     app.register_blueprint(iot_bp, url_prefix='/api')
     app.register_blueprint(webauthn_bp, url_prefix='/api')
+    app.register_blueprint(firmware_bp, url_prefix='/api')
     
     # Homepage
     @app.route('/')

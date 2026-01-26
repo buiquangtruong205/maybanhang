@@ -10,6 +10,7 @@ from services.payos_service import (
     verify_webhook_signature
 )
 from app.schemas.payment import PaymentCreate, WebhookPayload
+from app.websocket import emit_payment_success
 
 payment_bp = Blueprint('payment', __name__)
 
@@ -58,7 +59,8 @@ def create_payment():
                 'data': {
                     'checkout_url': result.get('checkout_url'),
                     'qr_code': result.get('qr_code'),
-                    'order_code': data.order_code
+                    'order_code': data.order_code,
+                    'payment_code': result.get('payment_code')  # Unique code cho PayOS
                 }
             }), 201
         else:
@@ -108,17 +110,22 @@ def payment_webhook():
         webhook = WebhookPayload(**json_data)
         
         if webhook.success and webhook.data:
-            order_code = webhook.data.orderCode
+            payment_code = webhook.data.orderCode  # Đây là payment_code unique (VD: 31234)
             amount = webhook.data.amount
             
-            print(f"✅ Payment successful: Order #{order_code}, Amount: {amount}")
+            # Parse order_id gốc từ payment_code
+            # Format: payment_code = order_id * 10000 + suffix
+            # Nên: order_id = payment_code // 10000
+            order_id = payment_code // 10000
+            
+            print(f"✅ Payment successful: payment_code={payment_code}, order_id={order_id}, amount={amount}")
             
             # Import models for database operations
             from app.models import Order, Slot, Transaction
             from app import db
             
-            # Tìm order theo order_id (order_code chính là order_id)
-            order = Order.query.get(order_code)
+            # Tìm order theo order_id (đã parse từ payment_code)
+            order = Order.query.get(order_id)
             if order:
                 # Chỉ cập nhật nếu order đang ở trạng thái pending
                 if order.status_payment == 'pending':
@@ -128,12 +135,25 @@ def payment_webhook():
                     
                     # Giảm stock trong slot
                     slot = Slot.query.get(order.slot_id)
-                    if slot and slot.stock > 0:
-                        slot.stock -= 1
-                        print(f"📦 Stock reduced for slot {order.slot_id}: {slot.stock + 1} -> {slot.stock}")
+                    if slot:
+                        # Use order.quantity if available, else 1
+                        qty = getattr(order, 'quantity', 1)
+                        if slot.stock >= qty:
+                            slot.stock -= qty
+                            print(f"📦 Stock reduced for slot {order.slot_id}: {slot.stock + qty} -> {slot.stock}")
+                        else:
+                            print(f"⚠️ Stock insufficient for slot {order.slot_id}: needed {qty}, had {slot.stock}")
+                            slot.stock = 0 # Force to 0? Or just subtract what we can? Best to just subtract/force.
+                        
+                        # Requirement: If stock becomes 0, set product to inactive
+                        if slot.stock == 0:
+                            product = Product.query.get(slot.product_id)
+                            if product:
+                                product.active = False
+                                print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (stock=0)")
                     
                     # Kiểm tra xem đã có transaction chưa (tránh duplicate)
-                    existing_transaction = Transaction.query.filter_by(order_id=order_code).first()
+                    existing_transaction = Transaction.query.filter_by(order_id=order_id).first()
                     if not existing_transaction:
                         # Tạo transaction record
                         # Lấy reference từ webhook data nếu có
@@ -147,20 +167,27 @@ def payment_webhook():
                             order_id=order.order_id,
                             amount=float(amount),
                             bank_trans_id=reference,
-                            description=f"Thanh toán đơn hàng #{order_code}",
+                            description=f"Thanh toán đơn hàng #{order_id} (payment: {payment_code})",
                             status='success'
                         )
                         db.session.add(transaction)
-                        print(f"💳 Transaction created for order #{order_code}")
+                        print(f"💳 Transaction created for order #{order_id}")
                     else:
-                        print(f"ℹ️ Transaction already exists for order #{order_code}")
+                        print(f"ℹ️ Transaction already exists for order #{order_id}")
                     
                     db.session.commit()
-                    print(f"✅ Order #{order_code} completed and transaction created")
+                    print(f"✅ Order #{order_id} completed and transaction created")
+                    
+                    # Emit WebSocket event for real-time notification
+                    emit_payment_success(order_id, {
+                        'amount': amount,
+                        'payment_code': payment_code
+                    })
+                    print(f"📤 WebSocket event emitted for order #{order_id}")
                 else:
-                    print(f"ℹ️ Order #{order_code} already has status: {order.status_payment}")
+                    print(f"ℹ️ Order #{order_id} already has status: {order.status_payment}")
             else:
-                print(f"⚠️ Order #{order_code} not found in database")
+                print(f"⚠️ Order #{order_id} not found in database (payment_code: {payment_code})")
             
             return jsonify({
                 'success': True,
@@ -229,9 +256,17 @@ def check_payment_status(order_code):
                 from app.models import Order, Slot, Transaction
                 from app import db
                 
+                # Attempt to find order. Logic fix: if order_code is large (payment_code), parse it.
+                real_order_id = order_code
                 order = Order.query.get(order_code)
+                
+                if not order and order_code > 10000:
+                    real_order_id = order_code // 10000
+                    print(f"🔄 Parsing real_order_id from payment_code: {order_code} -> {real_order_id}")
+                    order = Order.query.get(real_order_id)
+                
                 if not order:
-                    print(f"⚠️ Order #{order_code} not found in database")
+                    print(f"⚠️ Order #{order_code} (or {real_order_id}) not found in database")
                 elif order.status_payment != 'pending':
                     print(f"ℹ️ Order #{order_code} already has status: {order.status_payment}, skipping sync")
                 else:
@@ -244,12 +279,24 @@ def check_payment_status(order_code):
                         
                         # Giảm stock trong slot
                         slot = Slot.query.get(order.slot_id)
-                        if slot and slot.stock > 0:
-                            slot.stock -= 1
-                            print(f"📦 Stock reduced for slot {order.slot_id}: {slot.stock + 1} -> {slot.stock}")
+                        slot = Slot.query.get(order.slot_id)
+                        if slot:
+                            qty = getattr(order, 'quantity', 1)
+                            if slot.stock >= qty:
+                                slot.stock -= qty
+                                print(f"📦 Stock reduced for slot {order.slot_id}: {slot.stock + qty} -> {slot.stock}")
+                            else:
+                                slot.stock = 0
+
+                            # Requirement: If stock becomes 0, set product to inactive
+                            if slot.stock == 0:
+                                product = Product.query.get(slot.product_id)
+                                if product:
+                                    product.active = False
+                                    print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (stock=0)")
                         
                         # Kiểm tra xem đã có transaction chưa
-                        existing_transaction = Transaction.query.filter_by(order_id=order_code).first()
+                        existing_transaction = Transaction.query.filter_by(order_id=real_order_id).first()
                         if not existing_transaction:
                             # Tạo transaction record
                             transaction_amount = amount_paid if amount_paid > 0 else (amount if amount > 0 else order.price_snapshot)
@@ -273,6 +320,13 @@ def check_payment_status(order_code):
                         
                         db.session.commit()
                         print(f"✅ Order #{order_code} synced to completed status")
+                        
+                        # Emit WebSocket event for real-time notification
+                        emit_payment_success(real_order_id, {
+                            'amount': amount_paid if amount_paid > 0 else amount,
+                            'synced': True
+                        })
+                        print(f"📤 WebSocket event emitted for order #{real_order_id}")
                     except Exception as sync_error:
                         db.session.rollback()
                         print(f"❌ Error syncing order #{order_code}: {str(sync_error)}")
@@ -311,11 +365,18 @@ def sync_payment_status(order_code):
         from app import db
         
         # Kiểm tra order có tồn tại không
+        # Attempt to find order. Logic fix: if order_code is large (payment_code), parse it.
+        real_order_id = order_code
         order = Order.query.get(order_code)
+        
+        if not order and order_code > 10000:
+            real_order_id = order_code // 10000
+            order = Order.query.get(real_order_id)
+            
         if not order:
             return jsonify({
                 'success': False,
-                'message': f'Order #{order_code} not found'
+                'message': f'Order #{order_code} (or {real_order_id}) not found'
             }), 404
         
         # Lấy status từ PayOS
@@ -367,11 +428,22 @@ def sync_payment_status(order_code):
             
             # Giảm stock
             slot = Slot.query.get(order.slot_id)
-            if slot and slot.stock > 0:
-                slot.stock -= 1
+            if slot:
+                qty = getattr(order, 'quantity', 1)
+                if slot.stock >= qty:
+                    slot.stock -= qty
+                else: 
+                     slot.stock = 0
+                
+                # Requirement: If stock becomes 0, set product to inactive
+                if slot.stock == 0:
+                    product = Product.query.get(slot.product_id)
+                    if product:
+                        product.active = False
+                        print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (stock=0)")
             
             # Tạo transaction nếu chưa có
-            existing_transaction = Transaction.query.filter_by(order_id=order_code).first()
+            existing_transaction = Transaction.query.filter_by(order_id=real_order_id).first()
             if not existing_transaction:
                 transaction_amount = amount_paid if amount_paid > 0 else (amount if amount > 0 else order.price_snapshot)
                 reference = None

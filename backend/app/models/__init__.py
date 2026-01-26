@@ -3,7 +3,8 @@ from app.models.database import (
     PaymentCallback,
     DeviceIdentity, DeviceSession,
     ApiAuditLog, StaffAccessLog,
-    WebAuthnCredential
+    WebAuthnCredential,
+    DeviceLog, FirmwareUpdate
 )
 
 __all__ = [
@@ -11,6 +12,7 @@ __all__ = [
     'PaymentCallback',
     'DeviceIdentity', 'DeviceSession',
     'ApiAuditLog', 'StaffAccessLog',
-    'WebAuthnCredential'
+    'WebAuthnCredential',
+    'DeviceLog', 'FirmwareUpdate'
 ]
 

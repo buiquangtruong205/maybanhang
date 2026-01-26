@@ -14,6 +14,7 @@ class ProductOut(BaseModel):
     price: float
     image: Optional[str]
     active: bool
+    stock: int
     created_at: datetime
     
     class Config:

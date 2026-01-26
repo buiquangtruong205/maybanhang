@@ -49,6 +49,10 @@ class Product(db.Model, TimestampMixin):
     image = db.Column(db.String(500), nullable=True)
     active = db.Column(db.Boolean, default=True, nullable=False, index=True)
 
+    @property
+    def stock(self):
+        return sum(slot.stock for slot in self.slots)
+
 
 class Slot(db.Model, TimestampMixin):
     __tablename__ = "slots"
@@ -79,6 +83,7 @@ class Order(db.Model, TimestampMixin):
     slot_id = db.Column(db.Integer, db.ForeignKey("slots.slot_id"), nullable=True, index=True)  # nullable for demo without slots
 
     price_snapshot = db.Column(db.Numeric(10, 2), nullable=False)
+    quantity = db.Column(db.Integer, default=1, nullable=False)
 
     # tách trạng thái
     status_payment = db.Column(db.String(20), default="pending", nullable=False, index=True)
@@ -177,6 +182,25 @@ class DeviceSession(db.Model):
     machine = db.relationship("Machine", backref="device_sessions")
 
 
+class DeviceLog(db.Model):
+    """
+    Log readable từ thiết bị (errors, warnings, info).
+    Khác với ApiAuditLog (log request), bảng này log nội dung chi tiết.
+    """
+    __tablename__ = "device_logs"
+
+    log_id = db.Column(db.BigInteger, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machines.machine_id"), nullable=False, index=True)
+    
+    level = db.Column(db.String(20), default="info", nullable=False, index=True) # info, warning, error, critical
+    message = db.Column(db.Text, nullable=False)
+    data = db.Column(db.JSON, nullable=True) # Context data (optional)
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    machine = db.relationship("Machine", backref="device_logs")
+
+
 
 
 
@@ -213,7 +237,27 @@ class StaffAccessLog(db.Model):
     note = db.Column(db.Text, nullable=True)
 
     user = db.relationship("User", backref="access_logs")
+    user = db.relationship("User", backref="access_logs")
     machine = db.relationship("Machine", backref="access_logs")
+
+
+class FirmwareUpdate(db.Model):
+    __tablename__ = "firmware_updates"
+
+    update_id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machines.machine_id"), nullable=False, index=True)
+    
+    from_version = db.Column(db.String(20), nullable=True)
+    to_version = db.Column(db.String(20), nullable=False)
+    file_url = db.Column(db.String(500), nullable=False)
+    checksum = db.Column(db.String(128), nullable=False)
+    
+    status = db.Column(db.String(20), default="pending", nullable=False, index=True) # pending, downloading, installing, completed, failed
+    
+    deployed_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    
+    machine = db.relationship("Machine", backref="firmware_updates")
 
 
 
