@@ -1,0 +1,32 @@
+# Virtual environments
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Tests
+tests/
+test_*.py
+*_test.py
+
+# Logs
+*.log
+
+# Environment files (handled separately)
+.env.local
+
+# Certificates (if not needed in container)
+certs/
