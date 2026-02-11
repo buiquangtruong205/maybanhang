@@ -1,0 +1,54 @@
+# ========================
+# Vending Machine IoT Project
+# ========================
+
+# === Environment ===
+.env
+.env.local
+.env.production
+!.env.example
+
+# === PlatformIO / Firmware ===
+firmware/.pio/
+firmware/.vscode/
+firmware/lib/README
+firmware/.piolibdeps/
+
+# === Python / Backend ===
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/**/__pycache__/
+backend/venv/
+backend/.venv/
+backend/*.db
+backend/*.sqlite3
+backend/.pytest_cache/
+*.pyc
+*.pyo
+
+# === Node.js / Frontend ===
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Logs ===
+logs/
+*.log
+npm-debug.log*
+
+# === Build ===
+build/
+dist/
+*.egg-info/
