@@ -22,37 +22,37 @@ class MachineUpdate(BaseModel):
     secret_key: Optional[str] = None
 
 # --- Public ---
-@router.get("/", response_description="List all machines")
+@router.get("/", response_description="Danh sách máy bán hàng")
 async def read_machines(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
     """Liệt kê danh sách máy dùng MachineService."""
     return await MachineService.list_machines(db, skip=skip, limit=limit)
 
-@router.get("/{machine_id}", response_description="Get a single machine")
+@router.get("/{machine_id}", response_description="Chi tiết máy bán hàng")
 async def read_machine(machine_id: int, db: AsyncSession = Depends(get_db)):
     """Lấy chi tiết máy dùng MachineService."""
     machine = await MachineService.get_machine_by_id(db, machine_id)
     if machine is None:
-        raise HTTPException(status_code=404, detail="Machine not found")
+        raise HTTPException(status_code=404, detail="Không tìm thấy máy bán hàng")
     return machine
 
 # --- Admin ---
-@router.post("/", response_description="Create a machine")
+@router.post("/", response_description="Thêm máy bán hàng mới")
 async def create_machine(machine: MachineCreate, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
     """Tạo máy mới dùng MachineService."""
     return await MachineService.create_machine(db, machine.model_dump())
 
-@router.put("/{machine_id}", response_description="Update a machine")
+@router.put("/{machine_id}", response_description="Cập nhật thông tin máy bán hàng")
 async def update_machine(machine_id: int, machine: MachineUpdate, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
     """Cập nhật máy dùng MachineService."""
     updated = await MachineService.update_machine(db, machine_id, machine.model_dump(exclude_unset=True))
     if not updated:
-        raise HTTPException(status_code=404, detail="Machine not found")
+        raise HTTPException(status_code=404, detail="Không tìm thấy máy bán hàng")
     return updated
 
-@router.delete("/{machine_id}", response_description="Delete a machine")
+@router.delete("/{machine_id}", response_description="Xóa máy bán hàng")
 async def delete_machine(machine_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
     """Xóa máy dùng MachineService."""
     success = await MachineService.delete_machine(db, machine_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Machine not found")
-    return {"message": "Đã xóa máy", "id": machine_id}
+        raise HTTPException(status_code=404, detail="Không tìm thấy máy bán hàng")
+    return {"message": "Đã xóa máy bán hàng thành công", "id": machine_id}

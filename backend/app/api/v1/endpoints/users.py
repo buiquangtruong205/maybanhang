@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from sqlalchemy import text
 
 from app.db.database import get_db, engine, Base
 from app.models.user import User, UserRole
+from app.services.user_service import UserService
 from app.core.security import get_current_active_admin, get_password_hash
 
 router = APIRouter()
@@ -36,106 +36,80 @@ class UserResponse(BaseModel):
 
 @router.post("/reset-admin-db")
 async def reset_admin_db(db: AsyncSession = Depends(get_db)):
+    """Xử lý reset database và tạo admin mặc định (Dùng cho phát triển)."""
     try:
-        # 1. Drop Table & Type
         async with engine.begin() as conn:
             await conn.execute(text("DROP TABLE IF EXISTS users CASCADE"))
             try:
                 await conn.execute(text("DROP TYPE IF EXISTS userrole CASCADE"))
-            except Exception:
-                pass
+            except Exception: pass
         
-        # 2. Create Table
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             
-        # 3. Seed Admin
-        admin = User(
-            username="admin",
-            hashed_password=get_password_hash("admin123"),
-            full_name="Administrator",
-            role=UserRole.ADMIN
-        )
-        db.add(admin)
-        await db.commit()
-        await db.refresh(admin)
+        await UserService.create_user(db, {
+            "username": "admin",
+            "password": "admin123",
+            "full_name": "Administrator",
+            "role": UserRole.ADMIN
+        })
         
-        return {"message": "Admin Reset Successful", "user": admin}
+        return {"message": "Reset dữ liệu Admin thành công"}
     except Exception as e:
-        import traceback
-        return {"error": str(e), "traceback": traceback.format_exc()}
+        return {"error": str(e)}
 
 @router.get("/", response_model=List[UserResponse])
 async def read_users(
     skip: int = 0, 
     limit: int = 100, 
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_active_admin)
+    admin=Depends(get_current_active_admin)
 ):
-    result = await db.execute(select(User).offset(skip).limit(limit))
-    return result.scalars().all()
+    """Liệt kê người dùng dùng UserService."""
+    return await UserService.list_users(db, skip=skip, limit=limit)
 
 @router.post("/", response_model=UserResponse)
 async def create_user(
     user_in: UserCreate, 
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_active_admin)
+    admin=Depends(get_current_active_admin)
 ):
-    # Check username
-    result = await db.execute(select(User).where(User.username == user_in.username))
-    if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Username already exists")
+    """Tạo người dùng dùng UserService."""
+    existing = await UserService.get_user_by_username(db, user_in.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Tên đăng nhập đã tồn tại")
     
-    user = User(
-        username=user_in.username,
-        hashed_password=get_password_hash(user_in.password),
-        full_name=user_in.full_name,
-        role=user_in.role
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return user
+    return await UserService.create_user(db, user_in.model_dump())
 
 @router.put("/{user_id}", response_model=UserResponse)
 async def update_user(
     user_id: int, 
     user_in: UserUpdate, 
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_active_admin)
+    admin=Depends(get_current_active_admin)
 ):
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-        
-    if user_in.full_name is not None:
-        user.full_name = user_in.full_name
-    if user_in.role is not None:
-        if user.id == admin.id and user_in.role != UserRole.ADMIN:
-             raise HTTPException(status_code=400, detail="Cannot demote yourself")
-        user.role = user_in.role
-    if user_in.password:
-        user.hashed_password = get_password_hash(user_in.password)
-        
-    await db.commit()
-    await db.refresh(user)
-    return user
+    """Cập nhật người dùng dùng UserService."""
+    # Kiểm tra không cho Admin tự hạ quyền của chính mình
+    if user_id == admin.id and user_in.role and user_in.role != UserRole.ADMIN:
+         raise HTTPException(status_code=400, detail="Bạn không thể tự hạ quyền của chính mình")
+
+    updated = await UserService.update_user(db, user_id, user_in.model_dump(exclude_unset=True))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+    return updated
 
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: int, 
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_active_admin)
+    admin=Depends(get_current_active_admin)
 ):
+    """Xóa người dùng dùng UserService."""
     if user_id == admin.id:
-         raise HTTPException(status_code=400, detail="Cannot delete your own account")
+         raise HTTPException(status_code=400, detail="Bạn không thể tự xóa tài khoản của chính mình")
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    success = await UserService.delete_user(db, user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
         
-    await db.delete(user)
-    await db.commit()
-    return {"message": "User deleted"}
+    return {"message": "Đã xóa người dùng thành công"}

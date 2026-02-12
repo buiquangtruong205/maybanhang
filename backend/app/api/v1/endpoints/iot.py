@@ -22,12 +22,16 @@ async def check_order_iot(
     # Hiện tại giả lập machine_id = 1, thực tế nên lấy từ key hoặc metadata
     is_valid = await MachineService.verify_secret_key(db, machine_id=1, secret_key=x_machine_key)
     if not is_valid:
-         raise HTTPException(status_code=403, detail="Invalid Machine Key")
+         raise HTTPException(status_code=403, detail="Khóa máy không hợp lệ")
 
     result = await IOTService.process_dispense_request(db, order_code)
     
     if "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
+        # Chuyển đổi thông báo lỗi sang tiếng Việt nếu cần
+        error_msg = result["error"]
+        if error_msg == "Order not found":
+            error_msg = "Không tìm thấy đơn hàng"
+        raise HTTPException(status_code=404, detail=error_msg)
         
     return result
 
@@ -40,11 +44,11 @@ async def dispense_complete(
     # Xác thực máy
     is_valid = await MachineService.verify_secret_key(db, machine_id=1, secret_key=x_machine_key)
     if not is_valid:
-         raise HTTPException(status_code=403, detail="Invalid Machine Key")
+         raise HTTPException(status_code=403, detail="Khóa máy không hợp lệ")
          
     success = await IOTService.handle_dispense_result(db, request.order_code, request.success)
     
     if not success:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=404, detail="Không tìm thấy đơn hàng")
         
     return {"success": True}

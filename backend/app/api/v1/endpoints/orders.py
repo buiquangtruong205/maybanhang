@@ -14,7 +14,7 @@ async def get_order_status(order_code: int, db: AsyncSession = Depends(get_db)):
     """Kiểm tra trạng thái đơn hàng thông qua OrderService."""
     order = await OrderService.get_order_by_code(db, order_code)
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=404, detail="Không tìm thấy đơn hàng")
     return {
         "order_code": order.order_code,
         "status": order.status,

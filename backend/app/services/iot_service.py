@@ -16,7 +16,7 @@ class IOTService:
         """
         order = await OrderService.get_order_by_code(db, order_code)
         if not order:
-            return {"error": "Order not found", "should_dispense": False}
+            return {"error": "Không tìm thấy đơn hàng", "should_dispense": False}
             
         # Chỉ cho phép nhả hàng nếu đơn đã thanh toán (PAID)
         # Hoặc đang trong quá trình (DISPENSING)

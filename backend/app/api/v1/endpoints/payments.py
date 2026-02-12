@@ -20,7 +20,7 @@ async def create_payment(request: CreatePaymentRequest, db: AsyncSession = Depen
     # 1. Get Product
     product = await ProductService.get_product_by_id(db, request.product_id)
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(status_code=404, detail="Không tìm thấy sản phẩm")
 
     # 2. Check stock
     has_stock = await ProductService.check_stock(db, request.product_id, request.machine_id)
@@ -59,4 +59,4 @@ async def create_payment(request: CreatePaymentRequest, db: AsyncSession = Depen
         
     except Exception as e:
         print(f"PayOS Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Lỗi cổng thanh toán PayOS: {str(e)}")
