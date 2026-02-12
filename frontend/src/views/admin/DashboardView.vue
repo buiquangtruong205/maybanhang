@@ -60,8 +60,8 @@ async function loadAll() {
     statCards.value = [
       { label: 'Doanh thu', value: formatCurrency(s.total_revenue), color: 'var(--color-success)' },
       { label: 'Tổng đơn hàng', value: s.total_orders, color: 'white' },
-      { label: 'Đơn hoàn thành', value: s.completed_orders, color: 'var(--color-primary-light)' },
-      { label: 'Máy online', value: `${s.online_machines}/${s.total_machines}`, color: 'var(--color-info)' },
+      { label: 'Đã thanh toán', value: s.paid_orders, color: 'var(--color-primary-light)' },
+      { label: 'Máy đang chạy', value: `${s.online_machines}/${s.total_machines}`, color: 'var(--color-info)' },
     ]
     chartData.value = c
     topProducts.value = t

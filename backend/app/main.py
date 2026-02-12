@@ -24,7 +24,7 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/")
 async def root():
     return {
-        "message": "Vending Machine API v2 is running",
+        "message": "API Máy Bán Hàng V2 đang hoạt động",
         "docs": "/docs",
-        "db": settings.DATABASE_URL.split("@")[1] # Hide password
+        "db_status": "Đã kết nối"
     }

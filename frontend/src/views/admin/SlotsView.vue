@@ -1,13 +1,13 @@
 <template>
   <div>
     <div class="page-header">
-      <h1 class="page-title">Slots</h1>
+      <h1 class="page-title">Vị trí hàng (Slots)</h1>
       <div class="header-actions">
         <select v-model="machineFilter" class="filter-select" @change="load">
           <option value="">Tất cả máy</option>
           <option v-for="m in machines" :key="m.id" :value="m.id">{{ m.name }}</option>
         </select>
-        <button class="btn-primary" @click="openModal()">+ Thêm slot</button>
+        <button class="btn-primary" @click="openModal()">+ Thêm vị trí</button>
       </div>
     </div>
 
@@ -34,6 +34,7 @@
               <span class="stock-text">{{ s.stock }}/{{ s.capacity }}</span>
             </td>
             <td class="actions">
+              <button class="btn-ghost success" @click="quickRefill(s.id)" title="Nạp đầy nhanh">⚡ Refill</button>
               <button class="btn-ghost" @click="openModal(s)">Sửa</button>
               <button class="btn-ghost danger" @click="remove(s.id)">Xóa</button>
             </td>
@@ -49,7 +50,7 @@
     <div v-if="showModal" class="modal-overlay">
       <div class="modal-backdrop" @click="showModal = false" />
       <div class="modal-content">
-        <h3 class="modal-title">{{ form.id ? 'Sửa' : 'Thêm' }} slot</h3>
+        <h3 class="modal-title">{{ form.id ? 'Cập nhật' : 'Thêm mới' }} vị trí hàng</h3>
         <form @submit.prevent="save" class="modal-form">
           <input v-model="form.slot_code" placeholder="Mã slot (A1, B2...)" required class="admin-input" />
           <select v-model.number="form.machine_id" class="admin-input" required>
@@ -84,7 +85,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getSlots, createSlot, updateSlot, deleteSlot, getMachines, getProducts } from '../../api/admin.js'
+import { getSlots, createSlot, updateSlot, deleteSlot, refillSlot, getMachines, getProducts } from '../../api/admin.js'
 import ConfirmModal from '../../components/ConfirmModal.vue'
 
 const slots = ref([])
@@ -95,6 +96,15 @@ const showModal = ref(false)
 const showConfirm = ref(false)
 const confirmId = ref(null)
 const form = ref({})
+
+async function quickRefill(id) {
+  try {
+    await refillSlot(id)
+    await load()
+  } catch (e) {
+    alert('Không thể nạp hàng: ' + e.message)
+  }
+}
 
 onMounted(async () => {
   try {
@@ -180,6 +190,8 @@ async function executeDelete() {
 .actions { text-align: right; display: flex; gap: 0.5rem; justify-content: flex-end; }
 .btn-ghost.danger { color: var(--color-danger); }
 .btn-ghost.danger:hover { background: oklch(0.63 0.22 27 / 0.1); }
+.btn-ghost.success { color: var(--color-success); font-weight: 700; }
+.btn-ghost.success:hover { background: oklch(0.72 0.19 145 / 0.1); }
 .empty { text-align: center; color: rgba(255,255,255,0.3); padding: 2rem !important; }
 .modal-title { color: white; font-size: 1.125rem; margin-bottom: 1rem; }
 .modal-form { display: flex; flex-direction: column; gap: 0.75rem; }

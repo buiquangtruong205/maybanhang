@@ -45,3 +45,14 @@ class OrderService:
         query = query.offset(skip).limit(limit)
         result = await db.execute(query)
         return result.scalars().all()
+
+    @staticmethod
+    async def manual_confirm(db: AsyncSession, order_code: int):
+        """Xác nhận đơn hàng thủ công bởi nhân viên."""
+        order = await OrderService.get_order_by_code(db, order_code)
+        if order and order.status == OrderStatus.PENDING:
+            order.status = OrderStatus.PAID
+            await db.commit()
+            await db.refresh(order)
+            return order
+        return None

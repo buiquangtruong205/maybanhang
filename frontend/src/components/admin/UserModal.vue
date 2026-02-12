@@ -49,7 +49,7 @@
         <div class="modal-actions">
           <button type="button" class="btn-cancel" @click="close">Hủy</button>
           <button type="submit" class="btn-submit" :disabled="loading">
-            {{ loading ? 'Đang xử lý...' : (isEdit ? 'Cập nhật' : 'Thêm mới') }}
+            {{ loading ? 'Đang lưu...' : (isEdit ? 'Cập nhật' : 'Thêm mới') }}
           </button>
         </div>
       </form>
@@ -128,12 +128,12 @@ async function handleSubmit() {
 }
 
 .modal-content {
-  background: var(--color-surface);
-  color: var(--color-text);
+  background: var(--color-card);
+  color: white;
   width: 100%;
   max-width: 500px;
   border-radius: 12px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -148,24 +148,25 @@ async function handleSubmit() {
 }
 
 .modal-header h3 {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--color-text);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: white;
 }
 
 .close-btn {
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   line-height: 1;
   cursor: pointer;
   padding: 0;
-  transition: color 0.2s;
+  transition: all 0.2s;
 }
 
 .close-btn:hover {
-  color: var(--color-text);
+  color: #ef4444;
+  transform: rotate(90deg);
 }
 
 .modal-body {
@@ -183,8 +184,8 @@ async function handleSubmit() {
 
 .form-group label {
   font-size: 0.875rem;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .required {
@@ -193,26 +194,36 @@ async function handleSubmit() {
 
 .form-group input,
 .form-group select {
-  padding: 0.625rem 0.875rem;
-  border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.05);
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--color-text);
+  color: white;
   font-size: 0.9375rem;
   transition: all 0.2s;
+}
+
+.form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
 }
 
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
   border-color: var(--color-primary);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 0 2px rgba(var(--color-primary), 0.25);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 3px oklch(0.65 0.14 180 / 0.15);
+}
+
+.form-group select option {
+  background: var(--color-card);
+  color: white;
 }
 
 .form-group input:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .hint {
@@ -224,43 +235,50 @@ async function handleSubmit() {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
-  margin-top: 0.5rem;
+  margin-top: 1rem;
 }
 
 .btn-cancel,
 .btn-submit {
-  padding: 0.625rem 1.25rem;
-  border-radius: 0.5rem;
-  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
   font-size: 0.9375rem;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-cancel {
-  background: transparent;
-  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .btn-cancel:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .btn-submit {
   background: var(--color-primary);
-  color: var(--color-background);
+  color: white;
   border: none;
+  box-shadow: 0 4px 12px oklch(0.65 0.14 180 / 0.2);
 }
 
 .btn-submit:hover:not(:disabled) {
   opacity: 0.9;
   transform: translateY(-1px);
+  box-shadow: 0 6px 16px oklch(0.65 0.14 180 / 0.3);
+}
+
+.btn-submit:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn-submit:disabled {
-  opacity: 0.6;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 </style>

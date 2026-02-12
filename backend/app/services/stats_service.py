@@ -10,8 +10,8 @@ import io
 class StatsService:
     @staticmethod
     async def get_system_stats(db: AsyncSession):
-        # 1. Total Revenue (Completed orders)
-        query_rev = select(func.sum(Order.amount)).where(Order.status == "COMPLETED")
+        # 1. Total Revenue (Paid, Dispensing or Completed orders)
+        query_rev = select(func.sum(Order.amount)).where(Order.status.in_(["PAID", "DISPENSING", "COMPLETED"]))
         total_revenue = (await db.execute(query_rev)).scalar() or 0
 
         # 2. Orders Count
@@ -20,6 +20,9 @@ class StatsService:
         
         query_completed = select(func.count(Order.id)).where(Order.status == "COMPLETED")
         completed_orders = (await db.execute(query_completed)).scalar() or 0
+
+        query_paid = select(func.count(Order.id)).where(Order.status.in_(["PAID", "DISPENSING", "COMPLETED"]))
+        paid_orders = (await db.execute(query_paid)).scalar() or 0
 
         # 3. Machines
         query_total_machines = select(func.count(Machine.id))
@@ -32,6 +35,7 @@ class StatsService:
             "total_revenue": total_revenue,
             "total_orders": total_orders,
             "completed_orders": completed_orders,
+            "paid_orders": paid_orders,
             "total_machines": total_machines,
             "online_machines": online_machines
         }
@@ -55,7 +59,7 @@ class StatsService:
                 query = select(func.sum(Order.amount)).where(
                     Order.created_at >= day_start,
                     Order.created_at <= day_end,
-                    Order.status == "COMPLETED"
+                    Order.status.in_(["PAID", "DISPENSING", "COMPLETED"])
                 )
                 result = await db.execute(query)
                 total = result.scalar() or 0
@@ -74,7 +78,7 @@ class StatsService:
                 query = select(func.sum(Order.amount)).where(
                     Order.created_at >= day_start,
                     Order.created_at <= day_end,
-                    Order.status == "COMPLETED"
+                    Order.status.in_(["PAID", "DISPENSING", "COMPLETED"])
                 )
                 result = await db.execute(query)
                 total = result.scalar() or 0
@@ -97,7 +101,7 @@ class StatsService:
                 func.sum(Order.amount).label("total_revenue")
             )
             .join(Order.product)
-            .where(Order.status == "COMPLETED")
+            .where(Order.status.in_(["PAID", "DISPENSING", "COMPLETED"]))
             .group_by(Product.id, Product.name)
             .order_by(desc("total_sold"))
             .limit(limit)

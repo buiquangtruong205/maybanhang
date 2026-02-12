@@ -3,12 +3,12 @@ import client from './http'
 export const usersApi = {
     // List all users (Admin only)
     list() {
-        return client.get('/users')
+        return client.get('/users/')
     },
 
     // Create new user (Admin only)
     create(data) {
-        return client.post('/users', data)
+        return client.post('/users/', data)
     },
 
     // Update user (Admin only)
@@ -23,6 +23,6 @@ export const usersApi = {
 
     // Reset Admin DB (Dev helper)
     resetAdminDb() {
-        return client.post('/users/reset-admin-db')
+        return client.post('/users/reset-admin-db/')
     }
 }

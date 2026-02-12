@@ -40,7 +40,7 @@
       <!-- Loading -->
       <div v-else class="loading-section">
         <div class="spinner" />
-        <p>Đang tạo link thanh toán...</p>
+        <p>Đang khởi tạo giao dịch an toàn...</p>
       </div>
 
       <!-- Status -->

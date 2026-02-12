@@ -30,6 +30,11 @@
   --color-card: oklch(0.18 0.01 260);
 }
 
+.admin-layout {
+  --color-text: oklch(0.97 0 0);
+  --color-text-muted: oklch(0.60 0.02 260);
+}
+
 /* === BASE STYLES === */
 *,
 *::before,

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum as EnumType
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Enum as EnumType, BigInteger
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.database import Base
@@ -16,7 +16,7 @@ class Order(Base):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
-    order_code = Column(Integer, unique=True, index=True) # PayOS strict integer
+    order_code = Column(BigInteger, unique=True, index=True) # PayOS strict integer (64-bit to prevent overflow)
     product_id = Column(Integer, ForeignKey("products.id"))
     machine_id = Column(Integer, ForeignKey("machines.id"), nullable=True)
     amount = Column(Integer)

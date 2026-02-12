@@ -17,8 +17,8 @@
         </div>
         <div class="card-body">
           <p><strong>Vị trí:</strong> {{ m.location || '—' }}</p>
-          <p><strong>Trạng thái:</strong> <span :class="'badge ' + (m.status === 'online' ? 'badge-success' : 'badge-danger')">{{ m.status }}</span></p>
-          <p v-if="m.last_ping"><strong>Ping:</strong> {{ new Date(m.last_ping).toLocaleString('vi-VN') }}</p>
+          <p><strong>Trạng thái:</strong> <span :class="'badge ' + (m.status === 'online' ? 'badge-success' : 'badge-danger')">{{ m.status === 'online' ? 'Hoạt động' : (m.status === 'maintenance' ? 'Bảo trì' : 'Ngoại tuyến') }}</span></p>
+          <p v-if="m.last_ping"><strong>Phản hồi cuối:</strong> {{ new Date(m.last_ping).toLocaleString('vi-VN') }}</p>
         </div>
       </div>
 

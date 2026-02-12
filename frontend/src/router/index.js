@@ -38,32 +38,38 @@ const routes = [
       {
         path: '',
         name: 'AdminDashboard',
-        component: () => import('../views/admin/DashboardView.vue')
+        component: () => import('../views/admin/DashboardView.vue'),
+        meta: { title: 'Tổng quan' }
       },
       {
         path: 'products',
         name: 'AdminProducts',
-        component: () => import('../views/admin/ProductsView.vue')
+        component: () => import('../views/admin/ProductsView.vue'),
+        meta: { title: 'Sản phẩm' }
       },
       {
         path: 'orders',
         name: 'AdminOrders',
-        component: () => import('../views/admin/OrdersView.vue')
+        component: () => import('../views/admin/OrdersView.vue'),
+        meta: { title: 'Đơn hàng' }
       },
       {
         path: 'machines',
         name: 'AdminMachines',
-        component: () => import('../views/admin/MachinesView.vue')
+        component: () => import('../views/admin/MachinesView.vue'),
+        meta: { title: 'Máy bán hàng' }
       },
       {
         path: 'slots',
         name: 'AdminSlots',
-        component: () => import('../views/admin/SlotsView.vue')
+        component: () => import('../views/admin/SlotsView.vue'),
+        meta: { title: 'Vị trí hàng' }
       },
       {
         path: 'users',
         name: 'AdminUsers',
-        component: () => import('../views/admin/UsersView.vue')
+        component: () => import('../views/admin/UsersView.vue'),
+        meta: { title: 'Thành viên' }
       }
     ]
   },

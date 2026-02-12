@@ -98,9 +98,9 @@
               </div>
               <div class="modal-actions">
                 <button @click="closeModal" class="btn-back">Quay lại</button>
-                <button @click="proceedToPayment" :disabled="paying" class="btn-pay">
+                <button @click="proceedToPayment" :disabled="paying || !isOnline" class="btn-pay">
                   <svg v-if="paying" class="spin-icon" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                  {{ paying ? 'Đang xử lý...' : '💳 Thanh toán ngay' }}
+                  {{ paying ? 'Đang xử lý...' : (isOnline ? '💳 Thanh toán ngay' : '❌ Máy đang Offline') }}
                 </button>
               </div>
               <!-- Trust indicator -->
@@ -137,8 +137,8 @@ async function loadProducts() {
   try {
     const result = await getProducts()
     if (result.success) { products.value = result.products; isOnline.value = true }
-    else { error.value = result.error || 'Không thể tải sản phẩm'; isOnline.value = false }
-  } catch { error.value = 'Lỗi kết nối mạng'; isOnline.value = false }
+    else { error.value = result.error || 'Máy chủ đang bận, vui lòng thử lại'; isOnline.value = false }
+  } catch { error.value = 'Lỗi kết nối máy chủ'; isOnline.value = false }
   finally { loading.value = false }
 }
 

@@ -53,7 +53,9 @@ class PayOSService:
                 "status": payos_create_link.status
             }
         except Exception as e:
-            print(f"❌ PayOS Create Error: {str(e)}")
+            print(f"❌ PayOS API Error: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             raise e
 
     async def get_payment_info(self, order_code: int):

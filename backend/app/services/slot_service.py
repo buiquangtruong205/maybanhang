@@ -43,3 +43,13 @@ class SlotService:
             await db.commit()
             return True
         return False
+
+    @staticmethod
+    async def refill_slot(db: AsyncSession, slot_id: int):
+        slot = await SlotService.get_slot_by_id(db, slot_id)
+        if slot:
+            slot.stock = slot.capacity
+            await db.commit()
+            await db.refresh(slot)
+            return slot
+        return None

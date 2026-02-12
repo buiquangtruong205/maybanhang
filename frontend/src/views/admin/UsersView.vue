@@ -128,7 +128,7 @@ async function fetchUsers() {
   loading.value = true
   try {
     const res = await usersApi.list()
-    users.value = res.data
+    users.value = res // res đã là mảng dữ liệu
   } catch (error) {
     console.error('Failed to fetch users:', error)
   } finally {
@@ -188,40 +188,51 @@ async function handleDelete() {
   display: flex;
   flex-direction: column;
   gap: 2rem;
+  animation: fadeIn 0.5s ease-out;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
+  z-index: 10; /* Đưa header lên trên cùng để không bị các layer khác đè lên */
 }
+
 .title h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--color-text);
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: white; /* Đảm bảo nổi bật trên nền tối */
   margin-bottom: 0.25rem;
+  letter-spacing: -0.02em;
 }
+
 .title p {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.9375rem;
 }
 
 .btn-primary {
   display: flex;
   align-items: center;
   background: var(--color-primary);
-  color: var(--color-background);
+  color: white;
   border: none;
-  padding: 0.75rem 1.25rem;
+  padding: 0.75rem 1.5rem;
   border-radius: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer !important; /* Buộc hiện con trỏ tay */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px oklch(0.65 0.14 180 / 0.2);
+  position: relative;
+  z-index: 20; /* Luôn nằm trên mọi thành phần của nội dung */
+  pointer-events: auto !important; /* Đảm bảo nhận được click */
 }
+
 .btn-primary:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 20px oklch(0.65 0.14 180 / 0.3);
+  filter: brightness(1.1);
 }
 
 .stats-grid {
@@ -229,81 +240,161 @@ async function handleDelete() {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1.5rem;
 }
+
 .stat-card {
-  background: #1e293b; /* Dark Slate 800 */
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.25rem;
   padding: 1.5rem;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.25rem;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+}
+
+.stat-icon {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bg-primary-soft { background: oklch(0.65 0.14 180 / 0.12); color: var(--color-primary-light); }
+.bg-success-soft { background: oklch(0.72 0.19 145 / 0.12); color: var(--color-success); }
+.bg-info-soft { background: oklch(0.70 0.12 230 / 0.12); color: var(--color-info); }
+
+.stat-info h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-info p {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: white; /* Chữ trắng rõ nét */
+  line-height: 1;
 }
 
 .table-container {
-  background: #1e293b; /* Dark Slate 800 */
-  border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(12px);
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
 }
-.data-table th,
-.data-table td {
-  padding: 1rem 1.5rem;
-  text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
+
 .data-table th {
+  padding: 1.25rem 1.5rem;
+  text-align: left;
   font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.1em;
   color: rgba(255, 255, 255, 0.4);
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.02);
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
+
 .data-table td {
+  padding: 1.125rem 1.5rem;
   font-size: 0.9375rem;
   color: rgba(255, 255, 255, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: all 0.2s ease;
 }
+
 .data-table tr:last-child td { border-bottom: none; }
+
+.data-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+  color: white;
+}
 
 .badge {
   display: inline-flex;
-  padding: 0.25rem 0.75rem;
+  padding: 0.375rem 0.875rem;
   border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
+
 .badge-primary {
-  background: rgba(var(--color-primary), 0.15);
+  background: oklch(0.65 0.14 180 / 0.15);
   color: var(--color-primary-light);
+  border: 1px solid oklch(0.65 0.14 180 / 0.3);
 }
+
 .badge-secondary {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.actions-cell {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .btn-icon {
-  background: none;
-  border: none;
-  padding: 0.5rem;
-  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.625rem;
+  border-radius: 0.75rem;
   color: rgba(255, 255, 255, 0.4);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
 .btn-icon:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  transform: scale(1.1);
+  border-color: rgba(255, 255, 255, 0.2);
 }
+
 .btn-icon.text-danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: oklch(0.63 0.22 27 / 0.15);
+  color: var(--color-danger);
+  border-color: oklch(0.63 0.22 27 / 0.3);
 }
+
 .btn-icon:disabled {
-  opacity: 0.3;
+  opacity: 0.2;
   cursor: not-allowed;
+  transform: none;
 }
 </style>

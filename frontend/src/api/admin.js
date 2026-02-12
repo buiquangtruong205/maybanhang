@@ -15,12 +15,6 @@ export async function register(username, password, fullName = '') {
     return await http.post('/auth/register', { username, password, full_name: fullName })
 }
 
-// --- Helper: auth header ---
-function authHeader() {
-    const token = localStorage.getItem('token')
-    return token ? { headers: { Authorization: `Bearer ${token}` } } : {}
-}
-
 // Reporting
 export const getRevenueChart = async (period) => await http.get(`/stats/revenue-chart?period=${period}`)
 export const getTopProducts = async (limit) => await http.get(`/stats/top-products?limit=${limit}`)
@@ -36,20 +30,20 @@ export const exportExcel = async () => {
 }
 
 // --- Stats ---
-export const getStats = async () => await http.get('/stats/', authHeader())
+export const getStats = async () => await http.get('/stats/')
 
 // --- Products ---
 export async function getProducts() {
     return await http.get('/products/')
 }
 export async function createProduct(data) {
-    return await http.post('/products/', data, authHeader())
+    return await http.post('/products/', data)
 }
 export async function updateProduct(id, data) {
-    return await http.put(`/products/${id}`, data, authHeader())
+    return await http.put(`/products/${id}`, data)
 }
 export async function deleteProduct(id) {
-    return await http.delete(`/products/${id}`, authHeader())
+    return await http.delete(`/products/${id}`)
 }
 
 // --- Machines ---
@@ -57,20 +51,23 @@ export async function getMachines() {
     return await http.get('/machines/')
 }
 export async function createMachine(data) {
-    return await http.post('/machines/', data, authHeader())
+    return await http.post('/machines/', data)
 }
 export async function updateMachine(id, data) {
-    return await http.put(`/machines/${id}`, data, authHeader())
+    return await http.put(`/machines/${id}`, data)
 }
 export async function deleteMachine(id) {
-    return await http.delete(`/machines/${id}`, authHeader())
+    return await http.delete(`/machines/${id}`)
 }
 
 // --- Orders ---
 export async function getOrders(params = {}) {
     let url = '/orders/?limit=50'
     if (params.status) url += `&status=${params.status}`
-    return await http.get(url, authHeader())
+    return await http.get(url)
+}
+export async function manualConfirmOrder(orderCode) {
+    return await http.post(`/orders/${orderCode}/manual-confirm`)
 }
 
 // --- Slots ---
@@ -80,11 +77,27 @@ export async function getSlots(params = {}) {
     return await http.get(url)
 }
 export async function createSlot(data) {
-    return await http.post('/slots/', data, authHeader())
+    return await http.post('/slots/', data)
 }
 export async function updateSlot(id, data) {
-    return await http.put(`/slots/${id}`, data, authHeader())
+    return await http.put(`/slots/${id}`, data)
 }
 export async function deleteSlot(id) {
-    return await http.delete(`/slots/${id}`, authHeader())
+    return await http.delete(`/slots/${id}`)
+}
+export async function refillSlot(id) {
+    return await http.post(`/slots/${id}/refill`)
+}
+
+// --- Issues ---
+export async function getIssues(params = {}) {
+    let url = '/issues/'
+    if (params.status) url += `?status=${params.status}`
+    return await http.get(url)
+}
+export async function createIssue(data) {
+    return await http.post('/issues/', data)
+}
+export async function updateIssueStatus(id, status) {
+    return await http.put(`/issues/${id}`, { status })
 }

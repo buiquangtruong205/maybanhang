@@ -56,3 +56,11 @@ async def delete_slot(slot_id: int, db: AsyncSession = Depends(get_db), _=Depend
     if not success:
         raise HTTPException(status_code=404, detail="Không tìm thấy vị trí (slot) này")
     return {"message": "Đã xóa vị trí (slot) thành công", "id": slot_id}
+
+@router.post("/{slot_id}/refill")
+async def refill_slot(slot_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+    """Nạp đầy hàng cho slot nhanh chóng."""
+    updated = await SlotService.refill_slot(db, slot_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Không tìm thấy vị trí (slot) này")
+    return updated

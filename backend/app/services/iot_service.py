@@ -38,10 +38,9 @@ class IOTService:
             return False
             
         if success:
-            # 1. Cập nhật đơn hàng thành công
+            # 1. Cập nhật đơn hàng thành công (Máy đã nhả hàng xong)
             await OrderService.update_status(db, order.id, OrderStatus.COMPLETED)
-            # 2. Trừ kho sản phẩm
-            await ProductService.reduce_stock(db, order.product_id, order.machine_id)
+            # Chú ý: Tồn kho đã được trừ từ bước xác nhận thanh toán (PAID)
         else:
             # Cập nhật đơn hàng thất bại
             await OrderService.update_status(db, order.id, OrderStatus.FAILED)
