@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from pydantic import BaseModel
 
 from app.db.database import get_db
-from app.models.order import Order, OrderStatus
+from app.services.iot_service import IOTService
+from app.services.machine_service import MachineService
 
 router = APIRouter()
 
@@ -18,21 +18,18 @@ async def check_order_iot(
     x_machine_key: str = Header(None),
     db: AsyncSession = Depends(get_db)
 ):
-    # Verify Machine Key (TODO: Check against DB)
-    if x_machine_key not in ["may1", "may2", "may3"]:
+    # Xác thực máy (Machine Key) từ Database
+    # Hiện tại giả lập machine_id = 1, thực tế nên lấy từ key hoặc metadata
+    is_valid = await MachineService.verify_secret_key(db, machine_id=1, secret_key=x_machine_key)
+    if not is_valid:
          raise HTTPException(status_code=403, detail="Invalid Machine Key")
 
-    result = await db.execute(select(Order).where(Order.order_code == order_code))
-    order = result.scalar_one_or_none()
+    result = await IOTService.process_dispense_request(db, order_code)
     
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
         
-    return {
-        "order_code": order.order_code,
-        "status": order.status,
-        "should_dispense": order.status == OrderStatus.PAID
-    }
+    return result
 
 @router.post("/dispense-complete")
 async def dispense_complete(
@@ -40,21 +37,14 @@ async def dispense_complete(
     x_machine_key: str = Header(None),
     db: AsyncSession = Depends(get_db)
 ):
-    # Verify Machine Key
-    if x_machine_key not in ["may1", "may2", "may3"]:
+    # Xác thực máy
+    is_valid = await MachineService.verify_secret_key(db, machine_id=1, secret_key=x_machine_key)
+    if not is_valid:
          raise HTTPException(status_code=403, detail="Invalid Machine Key")
          
-    result = await db.execute(select(Order).where(Order.order_code == request.order_code))
-    order = result.scalar_one_or_none()
+    success = await IOTService.handle_dispense_result(db, request.order_code, request.success)
     
-    if not order:
+    if not success:
         raise HTTPException(status_code=404, detail="Order not found")
         
-    if request.success:
-        order.status = OrderStatus.COMPLETED
-    else:
-        order.status = OrderStatus.FAILED
-        
-    await db.commit()
-    
-    return {"success": True, "status": order.status}
+    return {"success": True}
