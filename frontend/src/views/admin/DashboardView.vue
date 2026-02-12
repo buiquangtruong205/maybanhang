@@ -33,6 +33,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getStats, getRevenueChart, getTopProducts, exportExcel } from '../../api/admin.js'
+import { formatCurrency } from '../../utils/formatters.js'
 import RevenueChart from '../../components/admin/RevenueChart.vue'
 import TopProducts from '../../components/admin/TopProducts.vue'
 
@@ -57,7 +58,7 @@ async function loadAll() {
     ])
     
     statCards.value = [
-      { label: 'Doanh thu', value: formatVnd(s.total_revenue), color: 'var(--color-success)' },
+      { label: 'Doanh thu', value: formatCurrency(s.total_revenue), color: 'var(--color-success)' },
       { label: 'Tổng đơn hàng', value: s.total_orders, color: 'white' },
       { label: 'Đơn hoàn thành', value: s.completed_orders, color: 'var(--color-primary-light)' },
       { label: 'Máy online', value: `${s.online_machines}/${s.total_machines}`, color: 'var(--color-info)' },
@@ -87,9 +88,6 @@ async function handleExport() {
   }
 }
 
-function formatVnd(amount) {
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0)
-}
 </script>
 
 <style scoped>

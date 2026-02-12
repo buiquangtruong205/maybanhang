@@ -52,3 +52,4 @@ npm-debug.log*
 build/
 dist/
 *.egg-info/
+.pytest_cache/
