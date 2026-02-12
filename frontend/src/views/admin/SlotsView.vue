@@ -71,18 +71,29 @@
         </form>
       </div>
     </div>
+    <!-- Confirm Modal -->
+    <ConfirmModal 
+      :isOpen="showConfirm"
+      title="Xóa slot"
+      message="Bạn có chắc chắn muốn xóa slot này không? Hành động này không thể hoàn tác."
+      @close="showConfirm = false"
+      @confirm="executeDelete"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getSlots, createSlot, updateSlot, deleteSlot, getMachines, getProducts } from '../../api/admin.js'
+import ConfirmModal from '../../components/ConfirmModal.vue'
 
 const slots = ref([])
 const machines = ref([])
 const products = ref([])
 const machineFilter = ref('')
 const showModal = ref(false)
+const showConfirm = ref(false)
+const confirmId = ref(null)
 const form = ref({})
 
 onMounted(async () => {
@@ -125,9 +136,20 @@ async function save() {
   } catch (e) { alert(e.message) }
 }
 
-async function remove(id) {
-  if (!confirm('Xóa slot này?')) return
-  try { await deleteSlot(id); await load() } catch {}
+function remove(id) {
+  confirmId.value = id
+  showConfirm.value = true
+}
+
+async function executeDelete() {
+  try {
+    await deleteSlot(confirmId.value)
+    showConfirm.value = false
+    await load()
+  } catch (e) {
+    alert('Có lỗi xảy ra: ' + e.message)
+    showConfirm.value = false
+  }
 }
 </script>
 

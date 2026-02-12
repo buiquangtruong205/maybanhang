@@ -60,15 +60,26 @@
         </form>
       </div>
     </div>
+    <!-- Confirm Modal -->
+    <ConfirmModal 
+      :isOpen="showConfirm"
+      title="Xóa sản phẩm"
+      message="Bạn có chắc chắn muốn xóa sản phẩm này không? Hành động này không thể hoàn tác."
+      @close="showConfirm = false"
+      @confirm="executeDelete"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getProducts, createProduct, updateProduct, deleteProduct } from '../../api/admin.js'
+import ConfirmModal from '../../components/ConfirmModal.vue'
 
 const products = ref([])
 const showModal = ref(false)
+const showConfirm = ref(false)
+const confirmId = ref(null)
 const form = ref({})
 
 onMounted(() => load())
@@ -91,9 +102,20 @@ async function save() {
   } catch (e) { alert(e.message) }
 }
 
-async function remove(id) {
-  if (!confirm('Xóa sản phẩm này?')) return
-  try { await deleteProduct(id); await load() } catch {}
+function remove(id) {
+  confirmId.value = id
+  showConfirm.value = true
+}
+
+async function executeDelete() {
+  try {
+    await deleteProduct(confirmId.value)
+    showConfirm.value = false
+    await load()
+  } catch (e) {
+    alert('Có lỗi xảy ra: ' + e.message)
+    showConfirm.value = false
+  }
 }
 
 function formatVnd(v) { return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(v || 0) }

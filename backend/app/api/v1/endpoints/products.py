@@ -1,47 +1,73 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import List, Optional
-from pydantic import BaseModel
+from sqlalchemy import func
+from typing import List
 
 from app.db.database import get_db
 from app.models.product import Product
+from app.models.slot import Slot
 from app.api.v1.endpoints.auth import get_current_user
+from app.schemas.product import ProductCreate, ProductUpdate, ProductWithStock
 
 router = APIRouter()
 
-# --- Schemas ---
-class ProductCreate(BaseModel):
-    name: str
-    price: int
-    image_url: str = ""
-    description: str = ""
-    category: str = "drink"
-    is_available: bool = True
-
-class ProductUpdate(BaseModel):
-    name: Optional[str] = None
-    price: Optional[int] = None
-    image_url: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
-    is_available: Optional[bool] = None
-
 # --- Public endpoints (for customer) ---
 
-@router.get("/", response_description="List all products")
+@router.get("/", response_model=List[ProductWithStock], response_description="List all products with stock")
 async def read_products(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Product).offset(skip).limit(limit))
-    products = result.scalars().all()
+    # Calculate total stock for each product by summing up slots
+    stmt = (
+        select(Product, func.coalesce(func.sum(Slot.stock), 0).label("stock"))
+        .outerjoin(Slot, Slot.product_id == Product.id)
+        .group_by(Product.id)
+        .offset(skip).limit(limit)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+    
+    # Map to schema
+    products = []
+    for product, stock in rows:
+        product_dict = {
+            "id": product.id,
+            "name": product.name,
+            "price": product.price,
+            "image_url": product.image_url,
+            "description": product.description,
+            "category": product.category,
+            "is_available": product.is_available,
+            "stock": stock
+        }
+        products.append(product_dict)
+        
     return products
 
-@router.get("/{product_id}", response_description="Get a single product")
+@router.get("/{product_id}", response_model=ProductWithStock, response_description="Get a single product with stock")
 async def read_product(product_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Product).where(Product.id == product_id))
-    product = result.scalar_one_or_none()
-    if product is None:
+    stmt = (
+        select(Product, func.coalesce(func.sum(Slot.stock), 0).label("stock"))
+        .outerjoin(Slot, Slot.product_id == Product.id)
+        .where(Product.id == product_id)
+        .group_by(Product.id)
+    )
+    result = await db.execute(stmt)
+    row = result.first()
+    
+    if not row:
         raise HTTPException(status_code=404, detail="Product not found")
-    return product
+        
+    product, stock = row
+    return {
+        "id": product.id,
+        "name": product.name,
+        "price": product.price,
+        "image_url": product.image_url,
+        "description": product.description,
+        "category": product.category,
+        "is_available": product.is_available,
+        "stock": stock
+    }
 
 # --- Admin endpoints (protected) ---
 

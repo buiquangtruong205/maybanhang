@@ -1,44 +1,35 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import func
-
 from app.db.database import get_db
-from app.models.order import Order, OrderStatus
-from app.models.product import Product
-from app.models.machine import Machine
-from app.api.v1.endpoints.auth import get_current_user
+from app.services.stats_service import StatsService
+from fastapi.responses import Response
 
 router = APIRouter()
 
 @router.get("/")
-async def read_stats(db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    # Total revenue (COMPLETED orders)
-    revenue_result = await db.execute(
-        select(func.coalesce(func.sum(Order.amount), 0)).where(Order.status == OrderStatus.COMPLETED)
-    )
-    total_revenue = revenue_result.scalar()
+async def get_stats(db: AsyncSession = Depends(get_db)):
+    return await StatsService.get_system_stats(db)
 
-    # Order counts
-    total_orders = (await db.execute(select(func.count(Order.id)))).scalar()
-    paid_orders = (await db.execute(select(func.count(Order.id)).where(Order.status == OrderStatus.PAID))).scalar()
-    completed_orders = (await db.execute(select(func.count(Order.id)).where(Order.status == OrderStatus.COMPLETED))).scalar()
-    pending_orders = (await db.execute(select(func.count(Order.id)).where(Order.status == OrderStatus.PENDING))).scalar()
+@router.get("/revenue-chart")
+async def get_revenue_chart(period: str = "week", db: AsyncSession = Depends(get_db)):
+    return await StatsService.get_revenue_chart(db, period)
 
-    # Products & Machines
-    total_products = (await db.execute(select(func.count(Product.id)))).scalar()
-    total_machines = (await db.execute(select(func.count(Machine.id)))).scalar()
-    online_machines = (await db.execute(
-        select(func.count(Machine.id)).where(Machine.status == "online")
-    )).scalar()
+@router.get("/top-products")
+async def get_top_products(limit: int = 5, db: AsyncSession = Depends(get_db)):
+    return await StatsService.get_top_products(db, limit)
 
-    return {
-        "total_revenue": total_revenue,
-        "total_orders": total_orders,
-        "paid_orders": paid_orders,
-        "completed_orders": completed_orders,
-        "pending_orders": pending_orders,
-        "total_products": total_products,
-        "total_machines": total_machines,
-        "online_machines": online_machines,
-    }
+@router.get("/export")
+async def export_excel(db: AsyncSession = Depends(get_db)):
+    try:
+        output = await StatsService.export_orders_excel(db)
+        content = output.getvalue()
+        
+        headers = {
+            'Content-Disposition': 'attachment; filename="orders_export.xlsx"'
+        }
+        return Response(content=content, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    except Exception as e:
+        import traceback
+        error_msg = traceback.format_exc()
+        print(error_msg)
+        return Response(content=f"Error exporting: {error_msg}", status_code=500)

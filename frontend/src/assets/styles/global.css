@@ -212,6 +212,11 @@ h6 {
   color: rgba(255, 255, 255, 0.3);
 }
 
+.admin-input option {
+  background: var(--color-card);
+  color: white;
+}
+
 .admin-card {
   background: var(--color-card);
   border: 1px solid rgba(255, 255, 255, 0.05);

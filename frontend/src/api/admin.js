@@ -21,10 +21,22 @@ function authHeader() {
     return token ? { headers: { Authorization: `Bearer ${token}` } } : {}
 }
 
-// --- Stats ---
-export async function getStats() {
-    return await http.get('/stats/', authHeader())
+// Reporting
+export const getRevenueChart = async (period) => await http.get(`/stats/revenue-chart?period=${period}`)
+export const getTopProducts = async (limit) => await http.get(`/stats/top-products?limit=${limit}`)
+export const exportExcel = async () => {
+    const blob = await http.get('/stats/export', { responseType: 'blob' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `Bao_Cao_Don_Hang_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
 }
+
+// --- Stats ---
+export const getStats = async () => await http.get('/stats/', authHeader())
 
 // --- Products ---
 export async function getProducts() {
