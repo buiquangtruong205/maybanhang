@@ -38,9 +38,10 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { login } from '../../api/admin.js'
+import { useAuthStore } from '../../stores/auth.js'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const username = ref('')
 const password = ref('')
 const loading = ref(false)
@@ -50,12 +51,14 @@ async function handleLogin() {
   loading.value = true
   error.value = ''
   try {
-    const data = await login(username.value, password.value)
-    localStorage.setItem('token', data.access_token)
-    localStorage.setItem('user', JSON.stringify(data.user))
-    router.push('/admin')
+    const result = await authStore.login(username.value, password.value)
+    if (result.success) {
+      router.push('/admin')
+    } else {
+      error.value = result.error || 'Đăng nhập thất bại'
+    }
   } catch (e) {
-    error.value = e.message || 'Đăng nhập thất bại'
+    error.value = 'Lỗi hệ thống'
   } finally {
     loading.value = false
   }

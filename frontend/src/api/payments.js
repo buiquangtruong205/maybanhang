@@ -35,3 +35,15 @@ export async function getOrderStatus(orderCode) {
         return { success: false, error: error.message }
     }
 }
+
+/**
+ * Cancel order
+ */
+export async function cancelOrder(orderCode) {
+    try {
+        const data = await http.post(`/orders/${orderCode}/cancel`)
+        return { success: true, message: data.message }
+    } catch (error) {
+        return { success: false, error: error.message }
+    }
+}

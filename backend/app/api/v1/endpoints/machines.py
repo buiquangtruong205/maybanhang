@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from app.db.database import get_db
 from app.services.machine_service import MachineService
-from app.api.v1.endpoints.auth import get_current_user
+from app.core.security import get_current_user, get_current_active_admin
 
 router = APIRouter()
 
@@ -37,21 +37,21 @@ async def read_machine(machine_id: int, db: AsyncSession = Depends(get_db)):
 
 # --- Admin ---
 @router.post("/", response_description="Thêm máy bán hàng mới")
-async def create_machine(machine: MachineCreate, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    """Tạo máy mới dùng MachineService."""
+async def create_machine(machine: MachineCreate, db: AsyncSession = Depends(get_db), _=Depends(get_current_active_admin)):
+    """Tạo máy mới (Chỉ Admin)."""
     return await MachineService.create_machine(db, machine.model_dump())
 
 @router.put("/{machine_id}", response_description="Cập nhật thông tin máy bán hàng")
-async def update_machine(machine_id: int, machine: MachineUpdate, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    """Cập nhật máy dùng MachineService."""
+async def update_machine(machine_id: int, machine: MachineUpdate, db: AsyncSession = Depends(get_db), _=Depends(get_current_active_admin)):
+    """Cập nhật máy (Chỉ Admin)."""
     updated = await MachineService.update_machine(db, machine_id, machine.model_dump(exclude_unset=True))
     if not updated:
         raise HTTPException(status_code=404, detail="Không tìm thấy máy bán hàng")
     return updated
 
 @router.delete("/{machine_id}", response_description="Xóa máy bán hàng")
-async def delete_machine(machine_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    """Xóa máy dùng MachineService."""
+async def delete_machine(machine_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_active_admin)):
+    """Xóa máy (Chỉ Admin)."""
     success = await MachineService.delete_machine(db, machine_id)
     if not success:
         raise HTTPException(status_code=404, detail="Không tìm thấy máy bán hàng")

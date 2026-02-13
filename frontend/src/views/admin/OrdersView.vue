@@ -32,7 +32,7 @@
             <td class="time">{{ formatDate(o.created_at) }}</td>
             <td style="text-align:right">
               <button 
-                v-if="o.status === 'pending'" 
+                v-if="o.status === 'PENDING'" 
                 class="btn-action-success" 
                 @click="confirmOrder(o.order_code)"
               >
@@ -51,13 +51,26 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { getOrders, manualConfirmOrder } from '../../api/admin.js'
+import socket from '../../plugins/socket'
 
 const orders = ref([])
 const statusFilter = ref('')
 
-onMounted(() => load())
+function handleOrderUpdate(data) {
+  // Reload danh sách khi có đơn mới
+  load()
+}
+
+onMounted(() => {
+  load()
+  socket.on('order_update', handleOrderUpdate)
+})
+
+onUnmounted(() => {
+  socket.off('order_update', handleOrderUpdate)
+})
 
 async function load() {
   try {

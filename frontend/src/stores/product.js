@@ -19,10 +19,13 @@ export const useProductStore = defineStore('product', {
         async fetchProducts() {
             this.loading = true
             try {
-                // Giả lập gọi API - sau này sẽ thay bằng axios call
-                // const response = await axios.get('/products')
-                // this.products = response.data
-                console.log('Fetching products...')
+                const { getProducts } = await import('../api/products.js')
+                const result = await getProducts()
+                if (result.success) {
+                    this.products = result.products
+                } else {
+                    this.error = result.error
+                }
             } catch (err) {
                 this.error = err.message
             } finally {

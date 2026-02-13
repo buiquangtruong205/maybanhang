@@ -68,5 +68,13 @@ class PayOSService:
             )
             return payment_info
         except Exception as e:
-            print(f"❌ PayOS Info Error: {str(e)}")
-            raise e
+            error_msg = str(e).lower()
+            # Nếu đơn hàng không tồn tại trên PayOS (do chưa thanh toán mà thoát, hoặc lỗi tạo link), coi như đã hủy
+            if "không tồn tại" in error_msg or "not found" in error_msg:
+                 # print(f"⚠️ PayOS: Order {order_code} not found. Treating as CANCELLED.") # Giảm log
+                 class MockPaymentInfo:
+                     status = "CANCELLED"
+                 return MockPaymentInfo()
+            
+            # print(f"⚠️ PayOS Warning for order {order_code}: {str(e)}") # Giảm log theo yêu cầu
+            return None

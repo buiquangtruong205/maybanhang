@@ -101,3 +101,14 @@ export async function createIssue(data) {
 export async function updateIssueStatus(id, status) {
     return await http.put(`/issues/${id}`, { status })
 }
+
+// --- System Settings ---
+export async function getSettings() {
+    return await http.get('/settings/')
+}
+export async function updateSetting(key, value) {
+    return await http.put(`/settings/${key}`, { value })
+}
+export async function restoreDefaultSettings() {
+    return await http.post('/settings/restore-defaults')
+}

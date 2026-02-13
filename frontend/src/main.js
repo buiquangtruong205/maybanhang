@@ -5,6 +5,7 @@ import router from './router'
 
 // Design System CSS (Tailwind v4 + custom theme)
 import './assets/styles/global.css'
+import './plugins/socket'
 
 const app = createApp(App)
 

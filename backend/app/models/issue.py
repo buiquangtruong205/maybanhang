@@ -17,7 +17,7 @@ class Issue(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     machine_id = Column(Integer, ForeignKey("machines.id"), nullable=True)
     content = Column(String, nullable=False)
-    status = Column(SqlEnum(IssueStatus), default=IssueStatus.OPEN)
+    status = Column(String, default=IssueStatus.OPEN.value)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

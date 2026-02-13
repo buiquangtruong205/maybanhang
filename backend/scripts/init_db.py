@@ -11,6 +11,10 @@ try:
     from app.models.machine import Machine
     from app.models.slot import Slot
     from app.models.order import Order
+    from app.models.user import User # New import for FK
+    from app.models.issue import Issue
+    from app.models.setting import SystemSetting # New import
+    from app.services.setting_service import SettingService # New import
     from sqlalchemy import select
     from app.core.config import settings
 except ImportError as e:
@@ -77,6 +81,12 @@ async def seed_data():
             print(f"   - {len(products)} Products")
             print(f"   - 1 Machine (VM001)")
             print(f"   - {len(slots)} Slots")
+
+            # 4. Seed System Settings
+            print("⏳ Seeding System Settings...")
+            await SettingService.initialize_defaults(session)
+            print("✅ System Settings initialized!")
+
     except Exception as e:
         print(f"❌ Seed Error: {e}")
         raise

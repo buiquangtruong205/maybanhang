@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.models.order import Order, OrderStatus
 from app.utils.helpers import generate_order_code
+from app.core.socket_manager import broadcast_order_update
 
 class OrderService:
     @staticmethod
@@ -17,6 +18,15 @@ class OrderService:
         db.add(new_order)
         await db.commit()
         await db.refresh(new_order)
+        
+        # Real-time notify
+        await broadcast_order_update(new_order.to_dict() if hasattr(new_order, 'to_dict') else {
+            "id": new_order.id,
+            "order_code": new_order.order_code,
+            "status": new_order.status,
+            "amount": new_order.amount
+        })
+        
         return new_order
 
     @staticmethod
@@ -33,6 +43,15 @@ class OrderService:
         if order:
             order.status = status
             await db.commit()
+            
+            # Real-time notify
+            await broadcast_order_update({
+                "id": order.id,
+                "order_code": order.order_code,
+                "status": order.status,
+                "amount": order.amount
+            })
+            
             return order
         return None
 
@@ -54,5 +73,34 @@ class OrderService:
             order.status = OrderStatus.PAID
             await db.commit()
             await db.refresh(order)
+            
+            # Real-time notify
+            await broadcast_order_update({
+                "id": order.id,
+                "order_code": order.order_code,
+                "status": order.status,
+                "amount": order.amount
+            })
+            
+            return order
+        return None
+
+    @staticmethod
+    async def cancel_order(db: AsyncSession, order_code: int):
+        """Hủy đơn hàng chủ động bởi khách hàng hoặc do hết hạn."""
+        order = await OrderService.get_order_by_code(db, order_code)
+        if order and order.status == OrderStatus.PENDING:
+            order.status = OrderStatus.CANCELLED
+            await db.commit()
+            await db.refresh(order)
+            
+            # Real-time notify
+            await broadcast_order_update({
+                "id": order.id,
+                "order_code": order.order_code,
+                "status": order.status,
+                "amount": order.amount
+            })
+            
             return order
         return None

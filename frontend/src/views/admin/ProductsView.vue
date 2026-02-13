@@ -2,7 +2,7 @@
   <div>
     <div class="page-header">
       <h1 class="page-title">Sản phẩm</h1>
-      <button class="btn-primary" @click="openModal()">+ Thêm sản phẩm</button>
+      <button v-if="authStore.isAdmin" class="btn-primary" @click="openModal()">+ Thêm sản phẩm</button>
     </div>
 
     <div class="admin-card">
@@ -31,8 +31,8 @@
             <td><span class="badge badge-info">{{ p.category }}</span></td>
             <td><span :class="p.is_available ? 'badge badge-success' : 'badge badge-muted'">{{ p.is_available ? 'Còn hàng' : 'Hết hàng' }}</span></td>
             <td class="actions">
-              <button class="btn-ghost" @click="openModal(p)">Sửa</button>
-              <button class="btn-ghost danger" @click="remove(p.id)">Xóa</button>
+              <button v-if="authStore.isAdmin" class="btn-ghost" @click="openModal(p)">Sửa</button>
+              <button v-if="authStore.isAdmin" class="btn-ghost danger" @click="remove(p.id)">Xóa</button>
             </td>
           </tr>
           <tr v-if="!products.length">
@@ -49,7 +49,10 @@
         <h3 class="modal-title">{{ form.id ? 'Sửa' : 'Thêm' }} sản phẩm</h3>
         <form @submit.prevent="save" class="modal-form">
           <input v-model="form.name" placeholder="Tên sản phẩm" required class="admin-input" />
-          <input v-model.number="form.price" type="number" placeholder="Giá (VND)" required class="admin-input" />
+          <div class="form-group-price">
+             <input v-model.number="form.price" type="number" placeholder="Giá (VND)" required class="admin-input" :disabled="!authStore.isAdmin && !!form.id" />
+             <small v-if="!authStore.isAdmin && form.id" class="text-muted">Chỉ Admin mới được sửa giá</small>
+          </div>
           <input v-model="form.category" placeholder="Danh mục (drink, water...)" class="admin-input" />
           <input v-model="form.image_url" placeholder="URL hình ảnh" class="admin-input" />
           <input v-model="form.description" placeholder="Mô tả" class="admin-input" />
@@ -75,7 +78,9 @@
 import { ref, onMounted } from 'vue'
 import { getProducts, createProduct, updateProduct, deleteProduct } from '../../api/admin.js'
 import ConfirmModal from '../../components/ConfirmModal.vue'
+import { useAuthStore } from '../../stores/auth.js'
 
+const authStore = useAuthStore()
 const products = ref([])
 const showModal = ref(false)
 const showConfirm = ref(false)

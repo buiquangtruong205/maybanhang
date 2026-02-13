@@ -6,16 +6,21 @@ from typing import Optional
 class IssueService:
     @staticmethod
     async def create_issue(db: AsyncSession, user_id: int, machine_id: Optional[int], content: str):
-        new_issue = Issue(
-            user_id=user_id,
-            machine_id=machine_id,
-            content=content,
-            status=IssueStatus.OPEN
-        )
-        db.add(new_issue)
-        await db.commit()
-        await db.refresh(new_issue)
-        return new_issue
+        try:
+            new_issue = Issue(
+                user_id=user_id,
+                machine_id=machine_id,
+                content=content,
+                status=IssueStatus.OPEN
+            )
+            db.add(new_issue)
+            await db.commit()
+            await db.refresh(new_issue)
+            return new_issue
+        except Exception as e:
+            await db.rollback()
+            print(f"❌ Lỗi khi tạo Issue: {e}")
+            raise e
 
     @staticmethod
     async def list_issues(db: AsyncSession, status: Optional[IssueStatus] = None, skip: int = 0, limit: int = 50):

@@ -2,7 +2,7 @@
   <div>
     <div class="page-header">
       <h1 class="page-title">Máy</h1>
-      <button class="btn-primary" @click="openModal()">+ Thêm máy</button>
+      <button v-if="authStore.isAdmin" class="btn-primary" @click="openModal()">+ Thêm máy</button>
     </div>
 
     <div class="machines-grid">
@@ -12,7 +12,7 @@
           <h3>{{ m.name }}</h3>
           <div class="card-actions">
             <button class="icon-btn" @click="openModal(m)" title="Sửa">✏️</button>
-            <button class="icon-btn" @click="remove(m.id)" title="Xóa">🗑️</button>
+            <button v-if="authStore.isAdmin" class="icon-btn" @click="remove(m.id)" title="Xóa">🗑️</button>
           </div>
         </div>
         <div class="card-body">
@@ -52,7 +52,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getMachines, createMachine, updateMachine, deleteMachine } from '../../api/admin.js'
+import { useAuthStore } from '../../stores/auth.js'
 
+const authStore = useAuthStore()
 const machines = ref([])
 const showModal = ref(false)
 const form = ref({})

@@ -60,7 +60,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getOrderStatus } from '../api/payments.js'
+import { getOrderStatus, cancelOrder } from '../api/payments.js'
 import QRCode from 'qrcode'
 
 const route = useRoute()
@@ -110,15 +110,20 @@ function formatTime(seconds) {
 }
 
 function startCountdown() {
-  countdownTimer = setInterval(() => {
+  countdownTimer = setInterval(async () => {
     timeLeft.value--
     if (timeLeft.value <= 0) {
       clearInterval(countdownTimer)
       statusMessage.value = 'Hết thời gian thanh toán'
+      if (orderCode.value) {
+        await cancelOrder(orderCode.value)
+      }
       router.push({ name: 'Cancel' })
     }
   }, 1000)
 }
+
+const isComplete = ref(false)
 
 async function pollPaymentStatus() {
   if (!orderCode.value) return
@@ -126,11 +131,13 @@ async function pollPaymentStatus() {
     const result = await getOrderStatus(orderCode.value)
     if (result.success) {
       if (result.status === 'PAID' || result.status === 'paid') {
+        isComplete.value = true
         statusMessage.value = 'Thanh toán thành công!'
         cleanup()
         router.push({ name: 'Success', query: { orderCode: orderCode.value, productName: productName.value } })
-      } else if (result.status === 'CANCELLED' || result.status === 'cancelled') {
-        statusMessage.value = 'Đơn hàng đã bị hủy'
+      } else if (result.status === 'CANCELLED' || result.status === 'cancelled' || result.status === 'EXPIRED') {
+        isComplete.value = true
+        statusMessage.value = 'Đơn hàng đã bị hủy hoặc hết hạn'
         cleanup()
         router.push({ name: 'Cancel' })
       }
@@ -147,8 +154,12 @@ function cleanup() {
   if (pollingTimer) clearInterval(pollingTimer)
 }
 
-function cancelAndGoBack() {
+async function cancelAndGoBack() {
+  isComplete.value = true
   cleanup()
+  if (orderCode.value) {
+    await cancelOrder(orderCode.value)
+  }
   router.push({ name: 'Home' })
 }
 
@@ -158,7 +169,13 @@ onMounted(() => {
   startPolling()
 })
 
-onUnmounted(cleanup)
+onUnmounted(() => {
+  cleanup()
+  // Nếu rời trang mà chưa hoàn thành (chưa Paid/Cancel/Hết giờ), tự động hủy
+  if (!isComplete.value && orderCode.value) {
+    cancelOrder(orderCode.value)
+  }
+})
 </script>
 
 <style scoped>

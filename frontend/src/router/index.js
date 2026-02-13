@@ -60,6 +60,12 @@ const routes = [
         meta: { title: 'Máy bán hàng' }
       },
       {
+        path: 'settings',
+        name: 'AdminSettings',
+        component: () => import('../views/admin/SettingsView.vue'),
+        meta: { requiresAuth: true, requiresAdmin: true } // Only Admin
+      },
+      {
         path: 'slots',
         name: 'AdminSlots',
         component: () => import('../views/admin/SlotsView.vue'),

@@ -39,6 +39,14 @@ async def read_users_me(current_user: tuple = Depends(get_current_user)):
     """Lấy thông tin người dùng hiện tại."""
     return current_user
 
+async def check_admin_role(current_user = Depends(get_current_user)):
+    if current_user.role != UserRole.ADMIN:
+         raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requires ADMIN privileges"
+        )
+    return current_user
+
 class RegisterRequest(BaseModel):
     username: str
     password: str

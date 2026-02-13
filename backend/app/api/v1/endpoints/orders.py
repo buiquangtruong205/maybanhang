@@ -24,13 +24,13 @@ async def get_order_status(order_code: int, db: AsyncSession = Depends(get_db)):
     if order.status == "PENDING":
         try:
             payment_info = await payos_service.get_payment_info(order_code)
-            if payment_info.status == "PAID":
+            if payment_info and payment_info.status == "PAID":
                 order.status = "PAID"
                 # Tự động trừ kho ngay khi xác nhận thanh toán thành công
                 await ProductService.reduce_stock(db, order.product_id, order.machine_id)
                 await db.commit()
                 await db.refresh(order)
-            elif payment_info.status == "CANCELLED":
+            elif payment_info and payment_info.status == "CANCELLED":
                 order.status = "CANCELLED"
                 await db.commit()
                 await db.refresh(order)
@@ -54,8 +54,33 @@ async def list_orders(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user)
 ):
-    """Liệt kê danh sách đơn hàng dùng OrderService."""
+    """Liệt kê và tự động đồng bộ trạng thái đơn hàng PENDING."""
+    # 1. Fetch orders from DB
     orders = await OrderService.list_orders(db, skip=skip, limit=limit, status=status)
+    
+    # 2. Sync PENDING orders with PayOS in background logic
+    # To avoid performance issues, we only sync a small number of orders at a time
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc)
+    
+    for order in orders:
+        # Sync PENDING orders created more than 10 seconds ago (reduced from 120s for better UX)
+        if order.status == "PENDING" and (now - order.created_at.replace(tzinfo=datetime.timezone.utc)).total_seconds() > 10:
+            try:
+                payment_info = await payos_service.get_payment_info(order.order_code)
+                if not payment_info:
+                    continue
+
+                if payment_info.status == "PAID":
+                    order.status = "PAID"
+                    await ProductService.reduce_stock(db, order.product_id, order.machine_id)
+                elif payment_info.status in ["CANCELLED", "EXPIRED"]:
+                    order.status = "CANCELLED"
+                
+                await db.commit()
+            except Exception as e:
+                print(f"⚠️ Auto-sync failed for order {order.order_code}: {e}")
+
     return orders
 
 @router.post("/{order_code}/manual-confirm")
@@ -73,3 +98,14 @@ async def manual_confirm_order(order_code: int, db: AsyncSession = Depends(get_d
         print(f"⚠️ Lỗi khi trừ kho đơn hàng {order_code}: {e}")
         
     return {"message": "Xác nhận đơn hàng thành công", "order_code": order_code}
+
+@router.post("/{order_code}/cancel")
+async def cancel_order(order_code: int, db: AsyncSession = Depends(get_db)):
+    """Hủy đơn hàng (dành cho người dùng hoặc tự động khi hết thời gian)."""
+    order = await OrderService.cancel_order(db, order_code)
+    if not order:
+        raise HTTPException(
+            status_code=400, 
+            detail="Không thể hủy đơn hàng này (Đơn hàng không tồn tại, đã thanh toán hoặc đã bị hủy)"
+        )
+    return {"message": "Đã hủy đơn hàng thành công", "order_code": order_code}
