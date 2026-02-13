@@ -59,11 +59,11 @@ const navItems = computed(() => {
   ]
 
   if (authStore.isAdmin) {
-    items.push({ 
-      to: '/admin/settings', 
-      label: 'Cấu hình', 
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>' 
-    })
+    items.push(
+      { to: '/admin/issues', label: 'Quản lý sự cố', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>' },
+      { to: '/admin/refill-logs', label: 'Nhật ký nạp hàng', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><path d="M8 12H4V8"/><path d="M16 12h4v4"/><path d="M16 8h4V4"/><path d="M12 16v4h4"/><path d="M8 16v4H4"/><path d="M12 12h.01"/></svg>' },
+      { to: '/admin/settings', label: 'Cấu hình', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>' }
+    )
   }
 
   return items
@@ -85,8 +85,8 @@ function logout() {
 
 .admin-sidebar {
   width: 260px;
-  background: var(--color-sidebar);
-  border-right: 1px solid rgba(255,255,255,0.06);
+  background: #18181b; /* Solid Zinc-900 */
+  border-right: 1px solid rgba(255,255,255,0.08);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -133,8 +133,21 @@ function logout() {
 }
 .nav-item.active {
   color: var(--color-primary-light);
-  background: rgba(var(--color-primary), 0.12);
-  background: oklch(0.65 0.14 180 / 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  position: relative;
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 15%;
+  bottom: 15%;
+  width: 3px;
+  background: var(--color-primary);
+  box-shadow: 0 0 10px var(--color-primary);
+  border-radius: 0 4px 4px 0;
+  pointer-events: none;
 }
 .nav-icon {
   width: 20px;

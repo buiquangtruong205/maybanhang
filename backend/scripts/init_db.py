@@ -12,6 +12,7 @@ try:
     from app.models.slot import Slot
     from app.models.order import Order
     from app.models.user import User # New import for FK
+    from app.models.log import RefillLog # New import for Refill Logs
     from app.models.issue import Issue
     from app.models.setting import SystemSetting # New import
     from app.services.setting_service import SettingService # New import

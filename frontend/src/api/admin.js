@@ -98,17 +98,25 @@ export async function getIssues(params = {}) {
 export async function createIssue(data) {
     return await http.post('/issues/', data)
 }
-export async function updateIssueStatus(id, status) {
-    return await http.put(`/issues/${id}`, { status })
-}
+export const updateIssueStatus = async (id, status) => {
+    return await http.put(`/issues/${id}`, { status });
+};
+export const deleteIssue = async (id) => {
+    return await http.delete(`/issues/${id}`);
+};
 
 // --- System Settings ---
-export async function getSettings() {
-    return await http.get('/settings/')
-}
-export async function updateSetting(key, value) {
-    return await http.put(`/settings/${key}`, { value })
-}
-export async function restoreDefaultSettings() {
-    return await http.post('/settings/restore-defaults')
-}
+export const getSettings = async () => {
+    return await http.get('/settings/');
+};
+export const updateSetting = async (key, value) => {
+    return await http.put(`/settings/${key}`, { value });
+};
+export const restoreDefaultSettings = async () => {
+    return await http.post('/settings/restore-defaults');
+};
+
+// --- Refill Logs ---
+export const getRefillLogs = async (params = {}) => {
+    return await http.get('/logs/refill', { params });
+};

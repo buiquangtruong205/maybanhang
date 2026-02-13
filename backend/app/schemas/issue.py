@@ -13,12 +13,18 @@ class IssueCreate(IssueBase):
 class IssueUpdate(BaseModel):
     status: Optional[IssueStatus] = None
 
+from app.schemas.user import UserSchema
+from app.schemas.machine import MachineSchema
+
 class IssueSchema(IssueBase):
     id: int
     user_id: int
     status: IssueStatus
     created_at: datetime
     updated_at: Optional[datetime] = None
+    
+    user: Optional[UserSchema] = None
+    machine: Optional[MachineSchema] = None
 
     class Config:
         from_attributes = True

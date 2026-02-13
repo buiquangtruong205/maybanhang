@@ -61,9 +61,21 @@ const routes = [
       },
       {
         path: 'settings',
-        name: 'AdminSettings',
+        name: 'admin-settings',
         component: () => import('../views/admin/SettingsView.vue'),
-        meta: { requiresAuth: true, requiresAdmin: true } // Only Admin
+        meta: { title: 'Cấu hình hệ thống', requiresAuth: true, adminOnly: true }
+      },
+      {
+        path: 'issues',
+        name: 'admin-issues',
+        component: () => import('../views/admin/IssuesView.vue'),
+        meta: { title: 'Quản lý sự cố', requiresAuth: true, adminOnly: true }
+      },
+      {
+        path: 'refill-logs',
+        name: 'admin-refill-logs',
+        component: () => import('../views/admin/RefillLogsView.vue'),
+        meta: { title: 'Nhật ký nạp hàng', requiresAuth: true, adminOnly: true }
       },
       {
         path: 'slots',

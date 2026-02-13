@@ -1,0 +1,155 @@
+/* ================================================
+   ADMIN CUSTOM THEME - CYBERPUNK / MODERN PREMIUM
+   ================================================ */
+
+/* --- Glassmorphism Utils --- */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(8px);
+  /* Reduced blur for performance */
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.glass-card {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  backdrop-filter: blur(8px);
+  /* Reduced blur */
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 1rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  will-change: transform, box-shadow;
+}
+
+.glass-card:hover {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border-color: rgba(var(--color-primary), 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(var(--color-primary), 0.1);
+  transform: translateY(-2px);
+}
+
+/* --- Neon Effects --- */
+.neon-text-primary {
+  color: #22d3ee;
+  text-shadow: 0 0 8px rgba(34, 211, 238, 0.4);
+}
+
+.neon-border-active {
+  position: relative;
+}
+
+.neon-border-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 15%;
+  bottom: 15%;
+  width: 3px;
+  background: var(--color-primary);
+  box-shadow: 0 0 8px var(--color-primary);
+  border-radius: 0 4px 4px 0;
+  pointer-events: none;
+  /* Prevent blocking clicks */
+}
+
+/* --- Gradient Text --- */
+.gradient-text {
+  background: linear-gradient(135deg, #22d3ee 0%, #818cf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 800;
+}
+
+/* --- Modern Table --- */
+.modern-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 0.5rem;
+}
+
+.modern-table thead th {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  padding: 0 1.5rem 0.5rem;
+  border: none;
+}
+
+.modern-table tbody tr {
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.2s;
+}
+
+.modern-table tbody tr td {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.modern-table tbody tr td:first-child {
+  border-left: 1px solid rgba(255, 255, 255, 0.03);
+  border-top-left-radius: 0.75rem;
+  border-bottom-left-radius: 0.75rem;
+}
+
+.modern-table tbody tr td:last-child {
+  border-right: 1px solid rgba(255, 255, 255, 0.03);
+  border-top-right-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
+}
+
+.modern-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.05);
+  transform: scale(1.005);
+}
+
+/* --- Status Badge Modern --- */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+
+.status-badge.open {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.1);
+}
+
+.status-badge.progress {
+  background: rgba(234, 179, 8, 0.1);
+  color: #fde047;
+  border: 1px solid rgba(234, 179, 8, 0.2);
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.1);
+}
+
+.status-badge.resolved {
+  background: rgba(34, 197, 94, 0.1);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.1);
+}
+
+/* --- Page Transition Override --- */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}

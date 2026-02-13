@@ -25,7 +25,7 @@
       </div>
 
       <!-- Content -->
-      <div class="settings-content">
+      <div class="settings-content glass-card">
         <div v-for="setting in filteredSettings" :key="setting.key" class="setting-item">
           <div class="setting-info">
             <label class="setting-label">{{ setting.description || setting.key }}</label>
@@ -119,13 +119,16 @@ async function update(setting, newValue) {
   setting.saving = true
   setting.saved = false
   try {
-    await updateSetting(setting.key, newValue)
-    setting.value = newValue
-    setting.tempValue = newValue
+    // Force convert to string to satisfy Pydantic schema
+    const stringValue = String(newValue) 
+    await updateSetting(setting.key, stringValue)
+    setting.value = stringValue
+    setting.tempValue = stringValue
     setting.saved = true
     setTimeout(() => setting.saved = false, 2000)
   } catch (e) {
-    alert('Lỗi lưu cấu hình: ' + e.message)
+    console.error(e) // Debug log
+    alert('Lỗi lưu cấu hình: ' + (e.response?.data?.detail || e.message)) // Better error
     setting.tempValue = setting.value // Revert
   } finally {
     setting.saving = false
@@ -173,7 +176,7 @@ async function confirmRestore() {
 .tab-btn:hover { background: rgba(255,255,255,0.05); color: white; }
 .tab-btn.active { background: var(--color-primary); color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
 
-.settings-content { flex: 1; background: var(--color-card); border-radius: 1rem; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.05); }
+.settings-content { flex: 1; padding: 1.5rem; }
 
 .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 1.25rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .setting-item:last-child { border-bottom: none; }

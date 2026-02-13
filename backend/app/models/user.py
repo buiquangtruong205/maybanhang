@@ -12,6 +12,8 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=True) # Added email
     hashed_password = Column(String)
     full_name = Column(String, nullable=True)
     role = Column(SqlEnum(UserRole), default=UserRole.STAFF)
+    is_active = Column(Boolean, default=True) # Added is_active

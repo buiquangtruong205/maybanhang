@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import joinedload
 from app.models.issue import Issue, IssueStatus
 from typing import Optional
 
@@ -27,6 +28,13 @@ class IssueService:
         query = select(Issue).order_by(Issue.created_at.desc())
         if status:
             query = query.where(Issue.status == status)
+        
+        # Eager load relationships
+        query = query.options(
+            joinedload(Issue.user),
+            joinedload(Issue.machine)
+        )
+        
         query = query.offset(skip).limit(limit)
         result = await db.execute(query)
         return result.scalars().all()
@@ -41,3 +49,13 @@ class IssueService:
             await db.refresh(issue)
             return issue
         return None
+
+    @staticmethod
+    async def delete_issue(db: AsyncSession, issue_id: int):
+        result = await db.execute(select(Issue).where(Issue.id == issue_id))
+        issue = result.scalar_one_or_none()
+        if issue:
+            await db.delete(issue)
+            await db.commit()
+            return True
+        return False

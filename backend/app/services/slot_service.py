@@ -45,11 +45,29 @@ class SlotService:
         return False
 
     @staticmethod
-    async def refill_slot(db: AsyncSession, slot_id: int):
+    async def refill_slot(db: AsyncSession, slot_id: int, user_id: int):
         slot = await SlotService.get_slot_by_id(db, slot_id)
         if slot:
-            slot.stock = slot.capacity
-            await db.commit()
-            await db.refresh(slot)
+            old_qty = slot.stock
+            refill_qty = slot.capacity - slot.stock
+            
+            if refill_qty > 0:
+                slot.stock = slot.capacity
+                
+                # Log the refill action
+                from app.services.log_service import LogService # Import here to avoid circular dependency
+                await LogService.create_refill_log(
+                    db,
+                    user_id=user_id,
+                    machine_id=slot.machine_id,
+                    slot_id=slot_id,
+                    product_id=slot.product_id,
+                    quantity=refill_qty,
+                    old_quantity=old_qty,
+                    new_quantity=slot.capacity
+                )
+
+                await db.commit()
+                await db.refresh(slot)
             return slot
         return None

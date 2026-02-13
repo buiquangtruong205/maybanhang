@@ -51,3 +51,18 @@ async def update_issue(
     if not updated:
         raise HTTPException(status_code=404, detail="Không tìm thấy sự cố này")
     return updated
+
+@router.delete("/{issue_id}")
+async def delete_issue(
+    issue_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Admin xóa báo cáo sự cố."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Chỉ Quản trị viên mới có quyền xóa sự cố")
+    
+    success = await IssueService.delete_issue(db, issue_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sự cố này")
+    return {"message": "Đã xóa sự cố thành công", "id": issue_id}
