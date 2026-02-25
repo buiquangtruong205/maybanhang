@@ -44,63 +44,78 @@
   </div>
 </template>
 
-<script>
-export default {
-  name: 'Qrcode',
-  props: ['value', 'orderCode'],
-  data() {
-    return {
-      isLoaded: false,
-      hasError: false,
-      loading: true,
-      retryCount: 0,
-      // Danh sách các máy chủ QR khác nhau để dự phòng
-      sources: [
-        (val) => `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(val)}`,
-        (val) => `https://quickchart.io/qr?text=${encodeURIComponent(val)}&size=250`,
-        (val) => `https://chart.googleapis.com/chart?chs=250x250&cht=qr&chl=${encodeURIComponent(val)}`
-      ]
-    }
-  },
-  computed: {
-    currentQrUrl() {
-      if (!this.value) return '';
-      return this.sources[this.retryCount % this.sources.length](this.value);
-    }
-  },
-  watch: {
-    value() {
-      this.resetState();
-    }
-  },
-  methods: {
-    handleImageLoad() {
-      this.isLoaded = true;
-      this.loading = false;
-      this.hasError = false;
-    },
-    handleImageError() {
-      console.error(`Vending Machine: QR Source #${this.retryCount} failed.`);
-      if (this.retryCount < this.sources.length - 1) {
-        this.retryCount++;
-      } else {
-        this.hasError = true;
-        this.loading = false;
-      }
-    },
-    retryWithNextSource() {
-      this.retryCount = (this.retryCount + 1) % this.sources.length;
-      this.hasError = false;
-      this.loading = true;
-      this.isLoaded = false;
-    },
-    resetState() {
-      this.retryCount = 0;
-      this.isLoaded = false;
-      this.hasError = false;
-      this.loading = true;
-    }
+<script setup>
+/**
+ * QrCodeDisplay Component
+ * Hiển thị mã QR thanh toán với cơ chế tự động chuyển nguồn khi lỗi.
+ * Hỗ trợ 3 máy chủ QR dự phòng để đảm bảo luôn hiển thị được.
+ */
+import { ref, computed, watch } from 'vue'
+
+// -- Props --
+const props = defineProps({
+  value: { type: String, default: '' },
+  orderCode: { type: String, default: '' }
+})
+
+// -- State --
+const isLoaded = ref(false)
+const hasError = ref(false)
+const loading = ref(true)
+const retryCount = ref(0)
+
+// Danh sách các máy chủ QR khác nhau để dự phòng
+const sources = [
+  (val) => `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(val)}`,
+  (val) => `https://quickchart.io/qr?text=${encodeURIComponent(val)}&size=250`,
+  (val) => `https://chart.googleapis.com/chart?chs=250x250&cht=qr&chl=${encodeURIComponent(val)}`
+]
+
+// -- Computed: Tự động chọn URL QR từ nguồn hiện tại --
+const currentQrUrl = computed(() => {
+  if (!props.value) return ''
+  return sources[retryCount.value % sources.length](props.value)
+})
+
+// -- Watcher: Reset trạng thái khi giá trị QR thay đổi --
+watch(() => props.value, () => {
+  resetState()
+})
+
+// -- Phương thức xử lý --
+
+// Khi ảnh QR tải thành công
+function handleImageLoad() {
+  isLoaded.value = true
+  loading.value = false
+  hasError.value = false
+}
+
+// Khi ảnh QR tải lỗi → tự động thử nguồn tiếp theo
+function handleImageError() {
+  console.error(`Máy bán hàng: Nguồn QR #${retryCount.value} bị lỗi.`)
+  if (retryCount.value < sources.length - 1) {
+    retryCount.value++
+  } else {
+    hasError.value = true
+    loading.value = false
   }
+}
+
+// Người dùng bấm nút "Thử nguồn khác"
+function retryWithNextSource() {
+  retryCount.value = (retryCount.value + 1) % sources.length
+  hasError.value = false
+  loading.value = true
+  isLoaded.value = false
+}
+
+// Đặt lại trạng thái ban đầu
+function resetState() {
+  retryCount.value = 0
+  isLoaded.value = false
+  hasError.value = false
+  loading.value = true
 }
 </script>
 

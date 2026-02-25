@@ -96,7 +96,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getProducts, createProduct, updateProduct, deleteProduct } from '../../api/admin.js'
-import ConfirmModal from '../../components/ConfirmModal.vue'
+import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import { useAuthStore } from '../../stores/auth.js'
 
 const authStore = useAuthStore()

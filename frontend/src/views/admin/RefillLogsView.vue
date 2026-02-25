@@ -2,8 +2,9 @@
   <div class="space-y-6">
     <div class="flex justify-between items-center">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Nhật ký Nạp hàng</h1>
-      <button @click="fetchLogs" class="btn-secondary">
-        <i class="fas fa-sync-alt mr-2"></i>Làm mới
+      <button @click="fetchLogs" class="btn-secondary flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        Làm mới
       </button>
     </div>
 
@@ -62,7 +63,7 @@
               </td>
               <td class="text-right text-sm text-gray-400">
                 <span class="opacity-50">{{ log.old_quantity }}</span>
-                <i class="fas fa-arrow-right mx-2 text-xs opacity-30"></i> 
+                <svg class="w-3 h-3 mx-2 opacity-30 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg> 
                 <span class="text-white font-bold">{{ log.new_quantity }}</span>
               </td>
             </tr>

@@ -20,7 +20,7 @@ export function formatCurrency(amount) {
 export function formatDateTime(dateString) {
     if (!dateString) return ''
     const date = new Date(dateString)
-    return new Intl.NumberFormat('vi-VN', {
+    return new Intl.DateTimeFormat('vi-VN', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',

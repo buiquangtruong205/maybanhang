@@ -86,7 +86,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getSlots, createSlot, updateSlot, deleteSlot, refillSlot, getMachines, getProducts } from '../../api/admin.js'
-import ConfirmModal from '../../components/ConfirmModal.vue'
+import ConfirmModal from '../../components/common/ConfirmModal.vue'
 
 const slots = ref([])
 const machines = ref([])
