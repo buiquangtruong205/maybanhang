@@ -67,3 +67,19 @@ async def dispense_complete(
         raise HTTPException(status_code=404, detail="Không tìm thấy đơn hàng")
 
     return {"success": True, "machine_id": machine.id}
+
+
+@router.post("/heartbeat")
+async def machine_heartbeat(
+    machine=Depends(_get_machine_from_key),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    ESP32 gọi API này định kỳ (vd: 30s/lần) để báo cáo máy vẫn online.
+    Cập nhật trường 'last_heartbeat' và 'status' trong cơ sở dữ liệu.
+    """
+    success = await MachineService.update_heartbeat(db, machine.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Không thể cập nhật nhịp tim")
+    
+    return {"status": "online", "machine_id": machine.id}
