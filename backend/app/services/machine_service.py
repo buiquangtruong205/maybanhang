@@ -18,6 +18,14 @@ class MachineService:
         return False
 
     @staticmethod
+    async def get_by_secret_key(db: AsyncSession, secret_key: str):
+        """Tra cứu máy từ secret key (dùng cho IoT endpoint tự detect machine)."""
+        if not secret_key:
+            return None
+        result = await db.execute(select(Machine).where(Machine.secret_key == secret_key))
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def update_heartbeat(db: AsyncSession, machine_id: int):
         """Cập nhật thời gian phản hồi cuối cùng của máy."""
         machine = await MachineService.get_machine_by_id(db, machine_id)

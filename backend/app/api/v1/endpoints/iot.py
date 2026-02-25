@@ -12,43 +12,58 @@ class DispenseRequest(BaseModel):
     order_code: int
     success: bool
 
-@router.get("/check-order/{order_code}")
-async def check_order_iot(
-    order_code: int, 
+
+async def _get_machine_from_key(
     x_machine_key: str = Header(None),
     db: AsyncSession = Depends(get_db)
 ):
-    # Xác thực máy (Machine Key) từ Database
-    # Hiện tại giả lập machine_id = 1, thực tế nên lấy từ key hoặc metadata
-    is_valid = await MachineService.verify_secret_key(db, machine_id=1, secret_key=x_machine_key)
-    if not is_valid:
-         raise HTTPException(status_code=403, detail="Khóa máy không hợp lệ")
+    """
+    Dependency chung: Xác thực X-Machine-Key header và trả về machine object.
+    Tự động tra cứu machine_id từ secret_key thay vì hardcode.
+    """
+    if not x_machine_key:
+        raise HTTPException(status_code=401, detail="Thiếu header X-Machine-Key")
 
+    machine = await MachineService.get_by_secret_key(db, secret_key=x_machine_key)
+    if not machine:
+        raise HTTPException(status_code=403, detail="Khóa máy không hợp lệ")
+
+    return machine
+
+
+@router.get("/check-order/{order_code}")
+async def check_order_iot(
+    order_code: int,
+    machine=Depends(_get_machine_from_key),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    ESP32 gọi API này để kiểm tra đơn hàng đã thanh toán chưa.
+    Nếu đã PAID → trả về should_dispense=True để máy nhả hàng.
+    """
     result = await IOTService.process_dispense_request(db, order_code)
-    
+
     if "error" in result:
-        # Chuyển đổi thông báo lỗi sang tiếng Việt nếu cần
-        error_msg = result["error"]
-        if error_msg == "Order not found":
-            error_msg = "Không tìm thấy đơn hàng"
-        raise HTTPException(status_code=404, detail=error_msg)
-        
+        raise HTTPException(status_code=404, detail=result["error"])
+
+    # Gắn thêm machine_id để ESP32 biết máy nào đang xử lý
+    result["machine_id"] = machine.id
     return result
+
 
 @router.post("/dispense-complete")
 async def dispense_complete(
     request: DispenseRequest,
-    x_machine_key: str = Header(None),
+    machine=Depends(_get_machine_from_key),
     db: AsyncSession = Depends(get_db)
 ):
-    # Xác thực máy
-    is_valid = await MachineService.verify_secret_key(db, machine_id=1, secret_key=x_machine_key)
-    if not is_valid:
-         raise HTTPException(status_code=403, detail="Khóa máy không hợp lệ")
-         
+    """
+    ESP32 gọi API này sau khi nhả hàng xong (thành công hoặc thất bại).
+    Cập nhật trạng thái đơn hàng → COMPLETED hoặc FAILED.
+    """
     success = await IOTService.handle_dispense_result(db, request.order_code, request.success)
-    
+
     if not success:
         raise HTTPException(status_code=404, detail="Không tìm thấy đơn hàng")
-        
-    return {"success": True}
+
+    return {"success": True, "machine_id": machine.id}

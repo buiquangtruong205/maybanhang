@@ -1,135 +1,221 @@
-# Vending Machine API & Simulator
+# 🏭 Vending Machine API — Version 2
 
-API backend cho máy bán hàng tự động với tích hợp PayOS và simulator ESP32.
+API backend cho máy bán hàng tự động với tích hợp **PayOS**, **Socket.IO** real-time, và giao tiếp **ESP32**.
 
-## 🚀 Cài đặt và chạy
+## 🛠️ Công nghệ
 
-### 1. Cài đặt dependencies
+| Thành phần | Công nghệ |
+| :--- | :--- |
+| **Framework** | FastAPI (Python 3.10+) |
+| **Database** | PostgreSQL + SQLAlchemy Async |
+| **Auth** | JWT (python-jose) + bcrypt |
+| **Thanh toán** | PayOS SDK |
+| **Real-time** | Socket.IO (python-socketio) |
+| **Migration** | Alembic |
+| **Server** | Uvicorn (ASGI) |
+
+---
+
+## 🚀 Cài đặt và Chạy
+
+### 1. Tạo môi trường ảo
 ```bash
-cd payment_service
+cd Version_2/backend
+python -m venv .venv
+.venv\Scripts\activate   # Windows
+```
+
+### 2. Cài dependencies
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Cấu hình environment
-Tạo file `.env` trong thư mục `payment_service`:
-```env
-PAYOS_CLIENT_ID=your_client_id
-PAYOS_API_KEY=your_api_key
-PAYOS_CHECKSUM_KEY=your_checksum_key
-DOMAIN=http://172.16.1.217:5000
-PORT=5000
-```
-
-### 3. Chạy server
+### 3. Cấu hình `.env`
 ```bash
-python run_server.py
+cp .env.example .env
+# Sửa các giá trị trong .env theo hệ thống của bạn
 ```
 
-Server sẽ chạy tại: http://172.16.1.217:5000
+### 4. Khởi tạo Database
+```bash
+python scripts/init_db.py       # Tạo bảng
+python scripts/seed_data.py     # Thêm dữ liệu mẫu
+python scripts/reset_admin.py   # Tạo tài khoản admin
+```
+
+### 5. Chạy server
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 5001 --reload
+```
+
+Server sẽ chạy tại: `http://127.0.0.1:5001`  
+Swagger UI: `http://127.0.0.1:5001/docs`
+
+---
 
 ## 📋 API Endpoints
 
-### Products API
-- `GET /api/products` - Lấy danh sách tất cả sản phẩm
-- `GET /api/products/{id}` - Lấy thông tin sản phẩm theo ID
-- `PUT /api/products/{id}/stock?new_stock=10` - Cập nhật stock sản phẩm
-- `POST /api/products/{id}/purchase` - Mua sản phẩm (giảm stock)
+### 🔐 Auth (`/api/v1/auth`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `POST` | `/login` | Đăng nhập, nhận JWT token |
 
-### Payment API
-- `POST /api/create-payment` - Tạo thanh toán mới
-- `GET /api/order-status/{order_code}` - Kiểm tra trạng thái đơn hàng
-- `POST /api/dispense-complete` - Xác nhận xuất hàng thành công
-- `POST /api/heartbeat` - Nhận heartbeat từ máy
+### 👤 Users (`/api/v1/users`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/` | Danh sách người dùng |
+| `POST` | `/` | Tạo user mới |
+| `PUT` | `/{id}` | Cập nhật user |
+| `DELETE` | `/{id}` | Xóa user |
 
-### Web Interface
-- `GET /` - Trang chủ demo thanh toán
-- `GET /success` - Trang thành công
-- `GET /cancel` - Trang hủy thanh toán
+### 📦 Products (`/api/v1/products`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/` | Danh sách sản phẩm |
+| `POST` | `/` | Tạo sản phẩm mới |
+| `PUT` | `/{id}` | Cập nhật sản phẩm |
+| `DELETE` | `/{id}` | Xóa sản phẩm |
 
-## 🤖 ESP32 Simulator
+### 🏭 Machines (`/api/v1/machines`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/` | Danh sách máy bán hàng |
+| `POST` | `/` | Tạo máy mới |
+| `PUT` | `/{id}` | Cập nhật thông tin máy |
+| `DELETE` | `/{id}` | Xóa máy |
 
-### Chạy simulator
-```bash
-python simulator.py
+### 🎰 Slots (`/api/v1/slots`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/` | Danh sách vị trí hàng |
+| `POST` | `/` | Tạo slot mới |
+| `PUT` | `/{id}` | Cập nhật slot |
+| `POST` | `/{id}/refill` | Nạp hàng vào slot |
+| `DELETE` | `/{id}` | Xóa slot |
+
+### 📄 Orders (`/api/v1/orders`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/` | Danh sách đơn hàng |
+| `POST` | `/{order_code}/confirm` | Xác nhận đơn thủ công |
+| `POST` | `/{order_code}/cancel` | Hủy đơn hàng |
+
+### 💳 Payments (`/api/v1/`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `POST` | `/create-payment` | Tạo link thanh toán PayOS |
+| `GET` | `/order-status/{code}` | Kiểm tra trạng thái đơn |
+| `POST` | `/payos-webhook` | Webhook callback từ PayOS |
+
+### 📊 Stats (`/api/v1/stats`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/dashboard` | Dữ liệu tổng quan dashboard |
+
+### 🤖 IoT (`/api/v1/iot`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/check-order/{code}` | ESP32 kiểm tra đơn đã thanh toán |
+| `POST` | `/dispense-complete` | ESP32 xác nhận nhả hàng xong |
+
+### ⚠️ Issues (`/api/v1/issues`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/` | Danh sách sự cố |
+| `POST` | `/` | Báo cáo sự cố mới |
+| `PUT` | `/{id}/resolve` | Đánh dấu đã xử lý |
+
+### ⚙️ Settings (`/api/v1/settings`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/` | Lấy cấu hình hệ thống |
+| `PUT` | `/{key}` | Cập nhật cấu hình |
+
+### 📋 Logs (`/api/v1/logs`)
+| Method | Path | Mô tả |
+| :--- | :--- | :--- |
+| `GET` | `/refill` | Nhật ký nạp hàng |
+
+---
+
+## 🔄 Workflow Thanh Toán
+
+```
+1. User chọn sản phẩm trên Web (hoặc ESP32 LCD)
+2. Frontend gọi POST /create-payment
+3. Backend tạo đơn hàng (PENDING) + gọi PayOS
+4. PayOS trả về QR code + checkout URL
+5. User quét QR → thanh toán qua ngân hàng
+6. PayOS gửi webhook → Backend cập nhật đơn (PAID)
+7. Socket.IO broadcast → Frontend hiển thị thành công
+8. ESP32 polling /iot/check-order → nhận should_dispense=True
+9. ESP32 nhả hàng → gọi /iot/dispense-complete
+10. Backend cập nhật đơn (COMPLETED)
 ```
 
-### Chức năng simulator:
-1. **Hiển thị sản phẩm** - Load từ API thật
-2. **Reload sản phẩm** - Tải lại từ API
-3. **Tạo thanh toán** - Tạo QR code PayOS
-4. **Kiểm tra thanh toán** - Check trạng thái real-time
-5. **Giả lập xuất hàng** - Simulate dispensing
-6. **Cập nhật stock** - Sync với API
-7. **Test API** - Kiểm tra tất cả endpoints
+---
 
-## 🧪 Testing
+## 📁 Cấu trúc Thư mục
 
-### Test API nhanh
-```bash
-python test_api.py
 ```
-
-### Test manual
-1. Chạy server: `python run_server.py`
-2. Mở browser: http://172.16.1.217:5000/docs (Swagger UI)
-3. Test API: http://172.16.1.217:5000/api/products
-
-## 📦 Dữ liệu sản phẩm mẫu
-
-API cung cấp 8 sản phẩm mẫu:
-- Coca Cola, Pepsi, Sprite, Fanta (15k-12k VND)
-- Aquafina, Lavie (8k VND)
-- Snack Oishi (10k VND)
-- Bánh Oreo (18k VND)
-
-## 🔄 Workflow hoàn chỉnh
-
-1. **ESP32** gửi heartbeat định kỳ
-2. **User** chọn sản phẩm trên màn hình
-3. **ESP32** gọi API tạo thanh toán
-4. **API** tạo QR PayOS và trả về
-5. **User** scan QR và thanh toán
-6. **ESP32** polling check trạng thái
-7. **Khi PAID** → ESP32 xuất hàng
-8. **ESP32** gửi xác nhận xuất hàng thành công
-
-## 🛠️ Development
-
-### Cấu trúc thư mục
-```
-payment_service/
+backend/
+├── .env / .env.example         # Cấu hình môi trường
+├── .gitignore
+├── requirements.txt            # Python dependencies
+├── alembic.ini                 # Cấu hình migration
+├── BACKEND_ROADMAP.md          # Kế hoạch phát triển
+├── README.md                   # Tài liệu này
 ├── app/
-│   ├── models/          # Data models
-│   ├── routers/         # API routes
-│   ├── services/        # Business logic
-│   └── config.py        # Configuration
-├── main.py              # FastAPI app
-├── run_server.py        # Development server
-├── simulator.py         # ESP32 simulator
-├── test_api.py          # API testing
-└── requirements.txt     # Dependencies
+│   ├── main.py                 # FastAPI + Socket.IO entry point
+│   ├── core/
+│   │   ├── config.py           # Đọc .env, settings
+│   │   ├── security.py         # JWT, bcrypt, OAuth2
+│   │   └── socket_manager.py   # Socket.IO server
+│   ├── db/
+│   │   └── database.py         # SQLAlchemy Async engine
+│   ├── models/                 # SQLAlchemy ORM models
+│   │   ├── user.py, product.py, machine.py, slot.py
+│   │   ├── order.py, issue.py, log.py, setting.py
+│   │   └── __init__.py         # Export tất cả models
+│   ├── schemas/                # Pydantic validation
+│   │   ├── product.py, machine.py, slot.py, user.py
+│   │   ├── order.py, payment.py, issue.py, setting.py
+│   │   └── __init__.py
+│   ├── services/               # Business logic
+│   │   ├── product_service.py, order_service.py
+│   │   ├── payos_service.py, machine_service.py
+│   │   ├── slot_service.py, user_service.py
+│   │   ├── iot_service.py, stats_service.py
+│   │   ├── issue_service.py, log_service.py
+│   │   └── setting_service.py
+│   ├── api/v1/
+│   │   ├── router.py           # Đăng ký tất cả endpoints
+│   │   └── endpoints/          # 12 nhóm API routes
+│   └── utils/
+│       └── helpers.py          # Hàm tiện ích
+├── scripts/                    # Scripts quản trị
+│   ├── init_db.py              # Khởi tạo database
+│   ├── seed_data.py            # Dữ liệu mẫu
+│   ├── reset_admin.py          # Reset tài khoản admin
+│   └── run_dev.py              # Chạy dev server
+├── tests/                      # Test suite
+│   ├── integration/
+│   └── unit/
+└── migrations/                 # Alembic migrations
 ```
 
-### Thêm sản phẩm mới
-Chỉnh sửa `app/models/product.py` → `SAMPLE_PRODUCTS`
+---
 
-### Thêm API mới
-1. Tạo router trong `app/routers/`
-2. Import và include trong `main.py`
+## 🔧 Biến Môi Trường (.env)
 
-## 🔧 Troubleshooting
-
-### Lỗi kết nối API
-- Kiểm tra server đang chạy: http://172.16.1.217:5000
-- Kiểm tra firewall/network
-- Thử IP khác nếu cần
-
-### Lỗi PayOS
-- Kiểm tra credentials trong `.env`
-- Xem log server để debug
-- Test với Postman/curl
-
-### Simulator không hoạt động
-- Kiểm tra backend URL trong simulator
-- Chạy `test_api.py` để verify endpoints
-- Kiểm tra network connectivity
+| Biến | Mô tả | Ví dụ |
+| :--- | :--- | :--- |
+| `PAYOS_CLIENT_ID` | PayOS Client ID | `abc123` |
+| `PAYOS_API_KEY` | PayOS API Key | `xyz789` |
+| `PAYOS_CHECKSUM_KEY` | PayOS Checksum Key | `key123` |
+| `PORT` | Port server | `5001` |
+| `DOMAIN` | Domain cho callback URL | `http://localhost:5001` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql+asyncpg://...` |
+| `SECRET_KEY` | JWT secret key | `your_secret` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Thời hạn JWT (phút) | `60` |
+| `MACHINE_KEYS` | Danh sách machine keys | `may1,may2` |
