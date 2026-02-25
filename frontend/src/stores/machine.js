@@ -1,21 +1,45 @@
 import { defineStore } from 'pinia'
+import { getMachines } from '../api/admin.js'
 
 export const useMachineStore = defineStore('machine', {
     state: () => ({
-        machineId: 'MACHINE_01',
-        name: 'Máy Bán Hàng Tự Động #1',
-        location: 'Sảnh chính - Tòa nhà A',
-        status: 'online',
+        machineId: null,
+        name: '',
+        location: '',
+        status: 'offline',
         slots: [],
-        iotConnected: false
+        iotConnected: false,
+        daLayDuLieu: false // đánh dấu đã gọi API chưa
     }),
 
     actions: {
-        updateStatus(newStatus) {
-            this.status = newStatus
+        /**
+         * Lấy thông tin máy từ API.
+         * Mặc định lấy máy đầu tiên (cho hệ thống 1 máy).
+         */
+        async layThongTinMay() {
+            try {
+                const danhSachMay = await getMachines()
+                if (Array.isArray(danhSachMay) && danhSachMay.length > 0) {
+                    const may = danhSachMay[0]
+                    this.machineId = may.id
+                    this.name = may.name
+                    this.location = may.location
+                    this.status = may.status || 'offline'
+                    this.daLayDuLieu = true
+                }
+            } catch (loi) {
+                console.error('❌ Lỗi lấy thông tin máy:', loi)
+                // Giữ giá trị mặc định nếu API lỗi
+            }
         },
-        setIotConnection(status) {
-            this.iotConnected = status
+
+        capNhatTrangThai(trangThaiMoi) {
+            this.status = trangThaiMoi
+        },
+
+        datKetNoiIoT(trangThai) {
+            this.iotConnected = trangThai
         }
     }
 })
