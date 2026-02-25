@@ -5,13 +5,6 @@ from app.api.v1.router import api_router
 from app.core.socket_manager import socket_app, sio
 import socketio
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from app.core.config import settings
-from app.api.v1.router import api_router
-from app.core.socket_manager import socket_app, sio
-import socketio
-
 # 1. Khởi tạo FastAPI App
 fastapi_app = FastAPI(
     title="Vending Machine API",
