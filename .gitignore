@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ========================
 # Vending Machine IoT Project
 # ========================
@@ -53,3 +54,13 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+=======
+venv/
+__pycache__/
+*.pyc
+.env
+instance/
+
+# Frontend environment (giá trị thật — không commit)
+frontend/js/env.js
+>>>>>>> origin/API_WEB_SERVER
