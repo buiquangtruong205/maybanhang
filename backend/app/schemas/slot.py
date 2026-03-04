@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 class SlotCreate(BaseModel):
@@ -7,7 +7,7 @@ class SlotCreate(BaseModel):
     slot_code: str
     product_id: Optional[int] = None
     stock: int = 0
-    capacity: int = 10
+    capacity: int = Field(10, ge=0, le=10)
 
 class SlotOut(BaseModel):
     slot_id: int
