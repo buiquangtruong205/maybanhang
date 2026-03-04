@@ -207,6 +207,10 @@ def create_app(config_class=Config):
         }), 500
     
     with app.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+        except Exception as e:
+            print(f"⚠️  Warning: Could not create database tables: {e}")
+            print("   Make sure DATABASE_URL environment variable is set correctly.")
     
     return app
