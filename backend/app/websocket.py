@@ -5,7 +5,7 @@ Uses Flask-SocketIO for WebSocket support
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # Initialize SocketIO with CORS support
-socketio = SocketIO(cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(cors_allowed_origins="*", async_mode='threading')
 
 # Track connected clients per order
 connected_clients = {}
