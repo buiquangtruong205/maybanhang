@@ -9,6 +9,14 @@ class SlotCreate(BaseModel):
     stock: int = 0
     capacity: int = Field(10, ge=0, le=10)
 
+    @root_validator
+    def stock_not_exceed_capacity(cls, values):
+        stock = values.get('stock', 0)
+        cap = values.get('capacity', 0)
+        if stock > cap:
+            raise ValueError('stock cannot exceed capacity')
+        return values
+
 class SlotOut(BaseModel):
     slot_id: int
     machine_id: int
