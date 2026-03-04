@@ -140,6 +140,36 @@ class PaymentCallback(db.Model):
     order = db.relationship("Order", backref="payment_callbacks")
 
 
+# =======================
+# 5) Thanh toán tiền mặt
+# =======================
+class CashDeposit(db.Model):
+    """
+    Lưu từng lần nhét tiền vào máy bán hàng.
+    Mỗi bản ghi = 1 tờ tiền được nhận diện bởi cảm biến.
+    """
+    __tablename__ = "cash_deposits"
+
+    deposit_id   = db.Column(db.Integer, primary_key=True)
+    order_id     = db.Column(db.Integer, db.ForeignKey("orders.order_id"), nullable=False, index=True)
+    machine_id   = db.Column(db.Integer, db.ForeignKey("machines.machine_id"), nullable=False, index=True)
+
+    # Mệnh giá tờ tiền (VNĐ): 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000
+    denomination = db.Column(db.Integer, nullable=False)
+
+    inserted_at  = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    # Tiền thừa trả lại (chỉ ghi nhận ở bản ghi cuối khi đủ tiền)
+    change       = db.Column(db.Integer, default=0, nullable=False)
+
+    order   = db.relationship("Order", backref="cash_deposits")
+    machine = db.relationship("Machine", backref="cash_deposits")
+
+    __table_args__ = (
+        db.Index("ix_cash_deposits_order_machine", "order_id", "machine_id"),
+    )
+
+
 
 
 
@@ -236,7 +266,6 @@ class StaffAccessLog(db.Model):
     ended_at = db.Column(db.DateTime, nullable=True, index=True)
     note = db.Column(db.Text, nullable=True)
 
-    user = db.relationship("User", backref="access_logs")
     user = db.relationship("User", backref="access_logs")
     machine = db.relationship("Machine", backref="access_logs")
 

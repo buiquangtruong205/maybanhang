@@ -129,9 +129,10 @@ def payment_webhook():
             if order:
                 # Chỉ cập nhật nếu order đang ở trạng thái pending
                 if order.status_payment == 'pending':
-                    # Cập nhật status thành completed
+                    # Cập nhật status thành completed — status_slots giữ 'pending'
+                    # để Arduino poll /iot/pending-orders và nhả hàng
                     order.status_payment = 'completed'
-                    order.status_slots = 'completed'
+                    order.status_slots = 'pending'
                     
                     # Giảm stock trong slot
                     slot = Slot.query.get(order.slot_id)
@@ -273,9 +274,10 @@ def check_payment_status(order_code):
                     print(f"🔄 Syncing payment status for order #{order_code} from PayOS to database")
                     
                     try:
-                        # Cập nhật order status
+                        # Cập nhật order status — status_slots giữ 'pending'
+                        # để Arduino poll /iot/pending-orders và nhả hàng
                         order.status_payment = 'completed'
-                        order.status_slots = 'completed'
+                        order.status_slots = 'pending'
                         
                         # Giảm stock trong slot
                         slot = Slot.query.get(order.slot_id)
@@ -423,8 +425,9 @@ def sync_payment_status(order_code):
         
         # Nếu đã thanh toán, sync về database
         if order.status_payment == 'pending':
+            # status_slots giữ 'pending' để Arduino nhả hàng
             order.status_payment = 'completed'
-            order.status_slots = 'completed'
+            order.status_slots = 'pending'
             
             # Giảm stock
             slot = Slot.query.get(order.slot_id)

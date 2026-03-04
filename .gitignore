@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .env
 instance/
+
+# Frontend environment (giá trị thật — không commit)
+frontend/js/env.js

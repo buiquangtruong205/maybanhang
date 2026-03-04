@@ -93,6 +93,7 @@ def create_app(config_class=Config):
     from app.routes.payment import payment_bp
     from app.routes.webauthn import webauthn_bp
     from app.routes.firmware import firmware_bp
+    from app.routes.security import security_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(product_bp, url_prefix='/api')
@@ -108,6 +109,7 @@ def create_app(config_class=Config):
     app.register_blueprint(iot_bp, url_prefix='/api')
     app.register_blueprint(webauthn_bp, url_prefix='/api')
     app.register_blueprint(firmware_bp, url_prefix='/api')
+    app.register_blueprint(security_bp, url_prefix='/api')
     
     # Homepage
     @app.route('/')

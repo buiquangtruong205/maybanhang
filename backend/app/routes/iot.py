@@ -615,3 +615,288 @@ def device_heartbeat(machine_id):
             'message': f'Error: {str(e)}'
         }), 500
 
+
+# ===========================
+# Cash Payment (Tiền mặt)
+# ===========================
+
+# Mệnh giá hợp lệ (VNĐ)
+VALID_DENOMINATIONS = {1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000}
+
+
+@iot_bp.route('/iot/cash-insert', methods=['POST'])
+@machine_key_required
+def cash_insert(machine_id):
+    """
+    Arduino báo nhận được tờ tiền (sau khi cảm biến nhận diện mệnh giá).
+
+    Request:
+        Header: X-Machine-Key: may1
+        Body: {
+            "order_id": 123,
+            "denomination": 50000      # mệnh giá tờ tiền (VNĐ)
+        }
+
+    Response (chưa đủ tiền):
+        {
+            "success": true,
+            "paid": false,
+            "total_inserted": 50000,
+            "price": 75000,
+            "remaining": 25000,
+            "change": 0
+        }
+
+    Response (đã đủ tiền):
+        {
+            "success": true,
+            "paid": true,
+            "total_inserted": 100000,
+            "price": 75000,
+            "remaining": 0,
+            "change": 25000
+        }
+    """
+    from app.models import CashDeposit, Transaction, Slot
+    from app.websocket import emit_payment_success
+    from sqlalchemy import func
+
+    try:
+        json_data = request.get_json(force=True, silent=True)
+        if not json_data:
+            return jsonify({'success': False, 'message': 'Request body must be valid JSON'}), 400
+
+        order_id = json_data.get('order_id')
+        denomination = json_data.get('denomination')
+
+        # --- Validation ---
+        if not order_id:
+            return jsonify({'success': False, 'message': 'order_id is required'}), 400
+
+        if denomination is None:
+            return jsonify({'success': False, 'message': 'denomination is required'}), 400
+
+        denomination = int(denomination)
+        if denomination not in VALID_DENOMINATIONS:
+            return jsonify({
+                'success': False,
+                'message': f'Invalid denomination: {denomination}. Valid values: {sorted(VALID_DENOMINATIONS)}'
+            }), 400
+
+        # --- Kiểm tra đơn hàng ---
+        order = Order.query.get(order_id)
+        if not order:
+            return jsonify({'success': False, 'message': f'Order #{order_id} not found'}), 404
+
+        if order.status_payment == 'completed':
+            return jsonify({
+                'success': False,
+                'message': f'Order #{order_id} is already paid'
+            }), 400
+
+        if order.status_payment == 'cancelled':
+            return jsonify({
+                'success': False,
+                'message': f'Order #{order_id} is cancelled'
+            }), 400
+
+        # --- Kiểm tra máy này sở hữu đơn hàng ---
+        if order.slot_id:
+            slot = Slot.query.get(order.slot_id)
+            if slot and slot.machine_id != machine_id:
+                return jsonify({
+                    'success': False,
+                    'message': f'Order #{order_id} does not belong to this machine'
+                }), 403
+
+        # --- Ghi nhận tờ tiền vừa nhét ---
+        deposit = CashDeposit(
+            order_id=order_id,
+            machine_id=machine_id,
+            denomination=denomination,
+            change=0
+        )
+        db.session.add(deposit)
+        db.session.flush()  # flush để có deposit_id, chưa commit
+
+        # --- Tính tổng tiền đã nhét ---
+        total_inserted = db.session.query(
+            func.sum(CashDeposit.denomination)
+        ).filter(CashDeposit.order_id == order_id).scalar() or 0
+
+        price = float(order.price_snapshot)
+        remaining = max(0, price - total_inserted)
+        change = max(0, total_inserted - price)
+        is_paid = total_inserted >= price
+
+        print(f"💵 Cash insert: machine={machine_id}, order={order_id}, "
+              f"denomination={denomination}, total={total_inserted}, price={price}, "
+              f"remaining={remaining}, change={change}")
+
+        if is_paid:
+            # --- Đủ tiền: cập nhật order, trừ giá sản phẩm, ghi tiền thừa ---
+            # status_slots giữ 'pending' → Arduino poll /iot/pending-orders rồi nhả hàng
+            # Sau khi nhả xong, Arduino gọi /iot/dispense-complete → 'dispensed'
+            order.status_payment = 'completed'
+            order.status_slots = 'pending'
+
+            # Ghi lại tiền thừa tại bản ghi vừa tạo
+            deposit.change = int(change)
+
+            # Giảm stock trong slot
+            if order.slot_id:
+                slot = Slot.query.get(order.slot_id)
+                if slot:
+                    qty = getattr(order, 'quantity', 1)
+                    if slot.stock >= qty:
+                        slot.stock -= qty
+                        print(f"📦 Stock reduced for slot {order.slot_id}: {slot.stock + qty} -> {slot.stock}")
+                    else:
+                        slot.stock = 0
+
+                    if slot.stock == 0:
+                        product = Product.query.get(slot.product_id)
+                        if product:
+                            product.active = False
+                            print(f"⚠️ Product '{product.product_name}' marked INACTIVE (stock=0)")
+
+            # Tạo Transaction (tiền mặt)
+            existing_tx = Transaction.query.filter_by(order_id=order_id).first()
+            if not existing_tx:
+                transaction = Transaction(
+                    order_id=order_id,
+                    amount=float(price),           # trừ đúng giá sản phẩm
+                    bank_trans_id=None,
+                    description=(
+                        f"Thanh toán tiền mặt đơn #{order_id} "
+                        f"(nhét: {int(total_inserted):,}đ, "
+                        f"giá: {int(price):,}đ, "
+                        f"tiền thừa: {int(change):,}đ)"
+                    ),
+                    status='success'
+                )
+                db.session.add(transaction)
+                print(f"💳 Cash transaction created for order #{order_id}")
+
+            db.session.commit()
+            print(f"✅ Order #{order_id} paid by cash. Change: {change:,}đ")
+
+            # Emit WebSocket để frontend nhận ngay
+            emit_payment_success(order_id, {
+                'amount': price,
+                'payment_method': 'cash',
+                'total_inserted': total_inserted,
+                'change': change
+            })
+
+            return jsonify({
+                'success': True,
+                'paid': True,
+                'message': f'Payment completed! Change: {int(change):,}đ',
+                'data': {
+                    'order_id': order_id,
+                    'total_inserted': int(total_inserted),
+                    'price': int(price),
+                    'remaining': 0,
+                    'change': int(change)
+                }
+            }), 200
+
+        else:
+            # Chưa đủ tiền
+            db.session.commit()
+            return jsonify({
+                'success': True,
+                'paid': False,
+                'message': f'Inserted {int(denomination):,}đ. Still need {int(remaining):,}đ more.',
+                'data': {
+                    'order_id': order_id,
+                    'total_inserted': int(total_inserted),
+                    'price': int(price),
+                    'remaining': int(remaining),
+                    'change': 0
+                }
+            }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+
+@iot_bp.route('/iot/cash-status/<int:order_id>', methods=['GET'])
+@machine_key_required
+def cash_status(machine_id, order_id):
+    """
+    Kiểm tra tổng số tiền đã nhét cho một đơn hàng.
+
+    Request:
+        Header: X-Machine-Key: may1
+        URL: /api/iot/cash-status/123
+
+    Response:
+        {
+            "success": true,
+            "data": {
+                "order_id": 123,
+                "price": 75000,
+                "total_inserted": 50000,
+                "remaining": 25000,
+                "change": 0,
+                "is_paid": false,
+                "status_payment": "pending",
+                "deposits": [
+                    {"denomination": 50000, "inserted_at": "2026-03-04T09:00:00"}
+                ]
+            }
+        }
+    """
+    from app.models import CashDeposit
+    from sqlalchemy import func
+
+    try:
+        order = Order.query.get(order_id)
+        if not order:
+            return jsonify({'success': False, 'message': f'Order #{order_id} not found'}), 404
+
+        # Tổng tiền đã nhét
+        total_inserted = db.session.query(
+            func.sum(CashDeposit.denomination)
+        ).filter(CashDeposit.order_id == order_id).scalar() or 0
+
+        price = float(order.price_snapshot)
+        remaining = max(0, price - total_inserted)
+        change = max(0, total_inserted - price)
+        is_paid = order.status_payment == 'completed'
+
+        # Chi tiết các lần nhét
+        deposits = CashDeposit.query.filter_by(order_id=order_id).order_by(
+            CashDeposit.inserted_at.asc()
+        ).all()
+
+        deposit_list = [{
+            'deposit_id': d.deposit_id,
+            'denomination': d.denomination,
+            'inserted_at': d.inserted_at.isoformat() if d.inserted_at else None
+        } for d in deposits]
+
+        return jsonify({
+            'success': True,
+            'message': 'Cash status retrieved',
+            'data': {
+                'order_id': order_id,
+                'price': int(price),
+                'total_inserted': int(total_inserted),
+                'remaining': int(remaining),
+                'change': int(change),
+                'is_paid': is_paid,
+                'status_payment': order.status_payment,
+                'deposits': deposit_list
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+
