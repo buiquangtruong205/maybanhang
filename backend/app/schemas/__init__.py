@@ -11,7 +11,8 @@ from app.schemas.device import (
 )
 from app.schemas.security import (
     ApiAuditLogCreate, ApiAuditLogOut,
-    StaffAccessLogCreate, StaffAccessLogOut, StaffAccessLogEnd
+    StaffAccessLogCreate, StaffAccessLogOut, StaffAccessLogEnd,
+    AdminActivityLogOut
 )
 
 __all__ = [
@@ -25,7 +26,8 @@ __all__ = [
     'DeviceIdentityCreate', 'DeviceIdentityOut',
     'DeviceSessionCreate', 'DeviceSessionOut',
     'ApiAuditLogCreate', 'ApiAuditLogOut',
-    'StaffAccessLogCreate', 'StaffAccessLogOut', 'StaffAccessLogEnd'
+    'StaffAccessLogCreate', 'StaffAccessLogOut', 'StaffAccessLogEnd',
+    'AdminActivityLogOut'
 ]
 
 

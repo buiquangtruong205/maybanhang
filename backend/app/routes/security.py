@@ -5,15 +5,18 @@ Security Log Routes
 - POST /api/staff-access        — Ghi nhận nhân viên bắt đầu mở máy
 - PUT  /api/staff-access/<id>/close  — Ghi nhận nhân viên đóng máy (kết thúc)
 - GET  /api/staff-access/<id>   — Xem chi tiết 1 log
+- GET  /api/admin-logs          — Xem lịch sử thao tác admin trên web
+- GET  /api/admin-logs/stats    — Thống kê thao tác admin
 """
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 from pydantic import ValidationError
 from app import db
-from app.models import ApiAuditLog, StaffAccessLog
+from app.models import ApiAuditLog, StaffAccessLog, AdminActivityLog
 from app.schemas import (
     ApiAuditLogOut,
-    StaffAccessLogCreate, StaffAccessLogOut, StaffAccessLogEnd
+    StaffAccessLogCreate, StaffAccessLogOut, StaffAccessLogEnd,
+    AdminActivityLogOut
 )
 from app.utils import token_required
 
@@ -263,3 +266,85 @@ def close_staff_access_log(current_user, access_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+# ==================== AdminActivityLog ====================
+
+@security_bp.route('/admin-logs', methods=['GET'])
+@token_required
+def get_admin_logs(current_user):
+    """
+    Xem lịch sử thao tác quản trị web (phân trang + filter).
+
+    Query params:
+        page        — Trang (default 1)
+        per_page    — Số bản ghi mỗi trang (default 50, max 200)
+        action      — Lọc theo hành động (login, create_product, ...)
+        user_id     — Lọc theo nhân viên
+        target_type — Lọc theo loại đối tượng (product, slot, machine, user)
+    """
+    page        = request.args.get('page', 1, type=int)
+    per_page    = min(request.args.get('per_page', 50, type=int), 200)
+    action      = request.args.get('action', type=str)
+    user_id     = request.args.get('user_id', type=int)
+    target_type = request.args.get('target_type', type=str)
+
+    query = AdminActivityLog.query
+
+    if action:
+        query = query.filter(AdminActivityLog.action == action)
+    if user_id:
+        query = query.filter(AdminActivityLog.user_id == user_id)
+    if target_type:
+        query = query.filter(AdminActivityLog.target_type == target_type)
+
+    pagination = query.order_by(AdminActivityLog.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    data = [AdminActivityLogOut.model_validate(log).model_dump() for log in pagination.items]
+
+    return jsonify({
+        'success': True,
+        'message': f'Found {pagination.total} admin log(s)',
+        'data': data,
+        'meta': {
+            'page': page,
+            'per_page': per_page,
+            'total': pagination.total,
+            'pages': pagination.pages
+        }
+    })
+
+
+@security_bp.route('/admin-logs/stats', methods=['GET'])
+@token_required
+def get_admin_logs_stats(current_user):
+    """
+    Thống kê nhanh AdminActivityLog: tổng thao tác, login, CRUD, login_failed.
+    """
+    from sqlalchemy import func
+
+    total = db.session.query(func.count(AdminActivityLog.log_id)).scalar() or 0
+    logins = db.session.query(func.count(AdminActivityLog.log_id))\
+        .filter(AdminActivityLog.action == 'login').scalar() or 0
+    login_failed = db.session.query(func.count(AdminActivityLog.log_id))\
+        .filter(AdminActivityLog.action == 'login_failed').scalar() or 0
+    creates = db.session.query(func.count(AdminActivityLog.log_id))\
+        .filter(AdminActivityLog.action.like('create_%')).scalar() or 0
+    updates = db.session.query(func.count(AdminActivityLog.log_id))\
+        .filter(AdminActivityLog.action.like('update_%')).scalar() or 0
+    deletes = db.session.query(func.count(AdminActivityLog.log_id))\
+        .filter(AdminActivityLog.action.like('delete_%')).scalar() or 0
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'total_actions': total,
+            'logins': logins,
+            'login_failed': login_failed,
+            'creates': creates,
+            'updates': updates,
+            'deletes': deletes
+        }
+    })

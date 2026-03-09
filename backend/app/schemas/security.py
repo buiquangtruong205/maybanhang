@@ -52,3 +52,18 @@ class StaffAccessLogOut(BaseModel):
 
 class StaffAccessLogEnd(BaseModel):
     note: Optional[str] = None
+
+
+# AdminActivityLog Schemas
+class AdminActivityLogOut(BaseModel):
+    log_id: int
+    user_id: Optional[int]
+    action: str
+    detail: Optional[str]
+    target_type: Optional[str]
+    target_id: Optional[int]
+    ip_address: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

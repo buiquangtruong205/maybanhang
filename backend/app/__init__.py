@@ -40,7 +40,9 @@ def create_app(config_class=Config):
     @app.after_request
     def after_request(response):
         # CORS headers
-        response.headers.add('Access-Control-Allow-Origin', '*')
+        # Allow specific origins from environment, default to * for backward compatibility
+        cors_origins = os.environ.get('CORS_ORIGINS', '*')
+        response.headers.add('Access-Control-Allow-Origin', cors_origins)
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Machine-Key')
         response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
         

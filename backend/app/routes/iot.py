@@ -3,11 +3,17 @@ IoT Machine Routes - API endpoints for ESP/Arduino vending machines
 """
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+import time
 from app import db
 from app.models import Machine, Order, Slot, Product
 from app.utils import machine_key_required
 
 iot_bp = Blueprint('iot', __name__)
+
+# In-memory store for active frontend sessions
+# Format: {machine_id: {'session_id': 'xyz', 'last_seen': 1234567.89}}
+FRONTEND_SESSIONS = {}
+FRONTEND_SESSION_TIMEOUT = 5.0  # seconds
 
 
 @iot_bp.route('/iot/ping', methods=['POST'])
@@ -35,7 +41,61 @@ def machine_ping(machine_id):
     })
 
 
-
+@iot_bp.route('/iot/frontend-heartbeat', methods=['POST'])
+@machine_key_required
+def frontend_heartbeat(machine_id):
+    """
+    Heartbeat từ giao diện web (frontend) để đảm bảo chỉ 1 thiết bị truy cập tại 1 thời điểm.
+    
+    Request:
+        Header: X-Machine-Key: may1
+        Body: {"session_id": "abc-123"}
+    
+    Response:
+        {"success": true, "rejected": false, "message": "Heartbeat accepted"}
+    """
+    try:
+        json_data = request.get_json(force=True, silent=True) or {}
+        session_id = json_data.get('session_id')
+        
+        if not session_id:
+            return jsonify({
+                'success': False,
+                'message': 'session_id is required'
+            }), 400
+            
+        current_time = time.time()
+        
+        # Lấy session hiện tại của machine
+        active_session = FRONTEND_SESSIONS.get(machine_id)
+        
+        # Nếu đã có session và session khác với session hiện tại
+        if active_session and active_session['session_id'] != session_id:
+            # Kiểm tra xem session cũ còn active không (dựa vào khoảng cách thời gian)
+            if current_time - active_session['last_seen'] < FRONTEND_SESSION_TIMEOUT:
+                return jsonify({
+                    'success': False,
+                    'message': 'System in use by another device',
+                    'rejected': True
+                }), 403
+                
+        # Cấp quyền hoặc duy trì quyền cho session hiện tại
+        FRONTEND_SESSIONS[machine_id] = {
+            'session_id': session_id,
+            'last_seen': current_time
+        }
+        
+        return jsonify({
+            'success': True,
+            'message': 'Heartbeat accepted',
+            'rejected': False
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        }), 500
 
 
 @iot_bp.route('/iot/dispense-complete', methods=['POST'])

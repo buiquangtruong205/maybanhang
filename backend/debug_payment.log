@@ -1,0 +1,3 @@
+POLL: Syncing payment status for order #205490
+POLL: Processing order #20, product_id=1, slot_id=1
+POLL: Searched for slot with product_id=1, qty>=1. Result: 1

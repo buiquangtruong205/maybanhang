@@ -4,7 +4,8 @@ from app.models.database import (
     DeviceIdentity, DeviceSession,
     ApiAuditLog, StaffAccessLog,
     WebAuthnCredential,
-    DeviceLog, FirmwareUpdate
+    DeviceLog, FirmwareUpdate,
+    AdminActivityLog
 )
 
 __all__ = [
@@ -13,7 +14,8 @@ __all__ = [
     'DeviceIdentity', 'DeviceSession',
     'ApiAuditLog', 'StaffAccessLog',
     'WebAuthnCredential',
-    'DeviceLog', 'FirmwareUpdate'
+    'DeviceLog', 'FirmwareUpdate',
+    'AdminActivityLog'
 ]
 
 

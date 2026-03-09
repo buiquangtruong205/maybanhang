@@ -4,6 +4,7 @@ from app import db
 from app.models import Machine
 from app.schemas import MachineCreate, MachineOut
 from app.utils import token_required
+from app.utils.admin_logger import log_admin_action
 
 machine_bp = Blueprint('machine', __name__)
 
@@ -46,6 +47,14 @@ def create_machine(current_user):
         db.session.add(new_machine)
         db.session.commit()
         
+        log_admin_action(
+            user_id=current_user.user_id,
+            action='create_machine',
+            detail=f"Tạo máy '{new_machine.name}' tại {new_machine.location}",
+            target_type='machine',
+            target_id=new_machine.machine_id
+        )
+        
         machine_out = MachineOut.model_validate(new_machine)
         return jsonify({
             'success': True,
@@ -85,6 +94,14 @@ def update_machine(current_user, machine_id):
         
         db.session.commit()
         
+        log_admin_action(
+            user_id=current_user.user_id,
+            action='update_machine',
+            detail=f"Cập nhật máy '{machine.name}'",
+            target_type='machine',
+            target_id=machine_id
+        )
+        
         machine_out = MachineOut.model_validate(machine)
         return jsonify({
             'success': True,
@@ -108,8 +125,18 @@ def delete_machine(current_user, machine_id):
             'success': False,
             'message': 'Machine not found'
         }), 404
+    machine_name = machine.name
     db.session.delete(machine)
     db.session.commit()
+    
+    log_admin_action(
+        user_id=current_user.user_id,
+        action='delete_machine',
+        detail=f"Xóa máy '{machine_name}'",
+        target_type='machine',
+        target_id=machine_id
+    )
+    
     return jsonify({
         'success': True,
         'message': 'Machine deleted successfully'

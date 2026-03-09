@@ -64,6 +64,7 @@
                 <button class="tab" data-tab="orders">📋 Đơn hàng</button>
                 <button class="tab" data-tab="transactions">💳 Giao dịch</button>
                 <button class="tab" data-tab="devices">🔌 Thiết bị</button>
+                <button class="tab" data-tab="admin-logs">📋 Lịch sử Admin</button>
             </div>
 
             <!-- Statistics Tab -->
@@ -290,10 +291,73 @@
                         <tbody id="deviceFirmwareTable"></tbody>
                     </table>
                 </div>
+            </div>
 
+            <!-- Admin Logs Tab -->
+            <div id="admin-logs" class="tab-content">
+                <div class="tab-header">
+                    <h2>Lịch sử hoạt động Admin</h2>
+                    <div style="display: flex; gap: 10px;">
+                        <select id="adminActionFilter" onchange="loadAdminLogs()">
+                            <option value="">Tất cả thao tác</option>
+                            <option value="login">Đăng nhập thành công</option>
+                            <option value="login_failed">Đăng nhập thất bại</option>
+                            <option value="create_product">Tạo sản phẩm</option>
+                            <option value="update_product">Sửa sản phẩm</option>
+                            <option value="delete_product">Xóa sản phẩm</option>
+                            <option value="create_slot">Tạo khe hàng</option>
+                            <option value="update_slot">Sửa khe hàng</option>
+                            <option value="delete_slot">Xóa khe hàng</option>
+                            <option value="create_machine">Tạo máy</option>
+                            <option value="update_machine">Sửa máy</option>
+                            <option value="delete_machine">Xóa máy</option>
+                            <option value="update_user">Sửa user</option>
+                            <option value="delete_user">Xóa user</option>
+                        </select>
+                        <select id="adminTypeFilter" onchange="loadAdminLogs()">
+                            <option value="">Tất cả loại đối tượng</option>
+                            <option value="product">Product</option>
+                            <option value="slot">Slot</option>
+                            <option value="machine">Machine</option>
+                            <option value="user">User</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="loadAdminLogs()">🔄 Làm mới</button>
+                    </div>
+                </div>
 
+                <div class="stats-container" style="margin-bottom: 20px;">
+                    <div class="stat-card" style="padding: 15px; background: #fff; border-radius: 8px;">
+                        <span style="font-size: 0.9em; color: #64748b;">Tổng Thao Tác</span><br />
+                        <strong style="font-size: 1.2em; color: #1e293b;" id="statAdminTotal">0</strong>
+                    </div>
+                    <div class="stat-card" style="padding: 15px; background: #fff; border-radius: 8px;">
+                        <span style="font-size: 0.9em; color: #64748b;">Đăng Nhập</span><br />
+                        <strong style="font-size: 1.2em; color: #1e293b;" id="statAdminLogins">0</strong>
+                    </div>
+                    <div class="stat-card" style="padding: 15px; background: #fff; border-radius: 8px;">
+                        <span style="font-size: 0.9em; color: #64748b;">Thao Tác Cập Nhật</span><br />
+                        <strong style="font-size: 1.2em; color: #1e293b;" id="statAdminUpdates">0</strong>
+                    </div>
+                    <div class="stat-card" style="padding: 15px; background: #fff; border-radius: 8px;">
+                        <span style="font-size: 0.9em; color: #64748b;">Xin Chào User</span><br />
+                        <strong style="font-size: 1.2em; color: #1e293b;" id="statAdminFailed">0</strong> Lỗi đăng nhập
+                    </div>
+                </div>
 
-
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Log ID</th>
+                            <th>Người dùng (ID)</th>
+                            <th>Thao tác</th>
+                            <th>Chi tiết</th>
+                            <th>Đối tượng</th>
+                            <th>IP Address</th>
+                            <th>Thời gian</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminLogsTable"></tbody>
+                </table>
             </div>
 
 

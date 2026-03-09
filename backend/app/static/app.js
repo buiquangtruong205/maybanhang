@@ -256,7 +256,8 @@ async function loadAllData() {
         loadOrders(),
         loadTransactions(),
         loadFirmware(),
-        loadUsers()
+        loadUsers(),
+        loadAdminLogs()
     ]);
 
     // Populate telemetry machine filter
@@ -352,6 +353,30 @@ async function loadUsers() {
     const data = await apiCall('/users');
     if (data.success) {
         usersCache = data.data;
+    }
+}
+
+async function loadAdminLogs() {
+    // Tải Stats
+    const statsData = await apiCall('/admin-logs/stats');
+    if (statsData.success) {
+        document.getElementById('statAdminTotal').textContent = statsData.data.total_actions;
+        document.getElementById('statAdminLogins').textContent = statsData.data.logins;
+        document.getElementById('statAdminUpdates').textContent = statsData.data.updates;
+        document.getElementById('statAdminFailed').textContent = statsData.data.login_failed;
+    }
+
+    // Tải danh sách filter
+    const actionFilter = document.getElementById('adminActionFilter')?.value || '';
+    const typeFilter = document.getElementById('adminTypeFilter')?.value || '';
+
+    let url = '/admin-logs?per_page=100';
+    if (actionFilter) url += `&action=${actionFilter}`;
+    if (typeFilter) url += `&target_type=${typeFilter}`;
+
+    const logsData = await apiCall(url);
+    if (logsData.success) {
+        renderAdminLogs(logsData.data);
     }
 }
 
@@ -473,6 +498,37 @@ function renderTransactions(transactions) {
             <td><span class="status status-${t.status}">${t.status}</span></td>
         </tr>
     `).join('');
+}
+
+function renderAdminLogs(logs) {
+    const tbody = document.getElementById('adminLogsTable');
+    if (!tbody) return;
+
+    tbody.innerHTML = logs.map(l => {
+        let userDisplay = l.user_id || 'Khách/Hệ thống';
+        if (l.user_id) {
+            const user = usersCache.find(u => u.user_id === l.user_id);
+            if (user) userDisplay = `${user.username} (${l.user_id})`;
+        }
+
+        let actionClass = 'secondary';
+        if (l.action.includes('login')) actionClass = l.action === 'login_failed' ? 'error' : 'success';
+        else if (l.action.includes('create')) actionClass = 'primary';
+        else if (l.action.includes('delete')) actionClass = 'error';
+        else if (l.action.includes('update')) actionClass = 'warning';
+
+        return `
+            <tr>
+                <td>${l.log_id}</td>
+                <td>${escapeHtml(userDisplay.toString())}</td>
+                <td><span class="status status-${actionClass}">${escapeHtml(l.action)}</span></td>
+                <td>${escapeHtml(l.detail || '-')}</td>
+                <td>${l.target_type ? escapeHtml(l.target_type) + ' #' + l.target_id : '-'}</td>
+                <td><code>${escapeHtml(l.ip_address || '-')}</code></td>
+                <td>${formatDate(l.created_at)}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 

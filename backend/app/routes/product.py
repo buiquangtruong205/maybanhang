@@ -5,6 +5,7 @@ from app import db
 from app.models import Product
 from app.schemas import ProductCreate, ProductOut
 from app.utils import token_required
+from app.utils.admin_logger import log_admin_action
 import os
 import uuid
 
@@ -99,6 +100,14 @@ def create_product(current_user):
         db.session.add(new_product)
         db.session.commit()
         
+        log_admin_action(
+            user_id=current_user.user_id,
+            action='create_product',
+            detail=f"Tạo sản phẩm '{new_product.product_name}' giá {new_product.price}",
+            target_type='product',
+            target_id=new_product.product_id
+        )
+        
         product_out = ProductOut.model_validate(new_product)
         return jsonify({
             'success': True,
@@ -138,6 +147,14 @@ def update_product(current_user, product_id):
         
         db.session.commit()
         
+        log_admin_action(
+            user_id=current_user.user_id,
+            action='update_product',
+            detail=f"Cập nhật sản phẩm '{product.product_name}'",
+            target_type='product',
+            target_id=product_id
+        )
+        
         product_out = ProductOut.model_validate(product)
         return jsonify({
             'success': True,
@@ -161,8 +178,18 @@ def delete_product(current_user, product_id):
             'success': False,
             'message': 'Product not found'
         }), 404
+    product_name = product.product_name
     db.session.delete(product)
     db.session.commit()
+    
+    log_admin_action(
+        user_id=current_user.user_id,
+        action='delete_product',
+        detail=f"Xóa sản phẩm '{product_name}'",
+        target_type='product',
+        target_id=product_id
+    )
+    
     return jsonify({
         'success': True,
         'message': 'Product deleted successfully'

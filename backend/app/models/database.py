@@ -289,6 +289,35 @@ class FirmwareUpdate(db.Model):
     machine = db.relationship("Machine", backref="firmware_updates")
 
 
+# =======================
+# 8) Admin Activity Log - Log thao tác quản trị web
+# =======================
+class AdminActivityLog(db.Model):
+    """
+    Log mọi thao tác của nhân viên/admin trên web dashboard.
+    VD: login, create_product, update_slot, delete_machine, ...
+    """
+    __tablename__ = "admin_activity_logs"
+
+    log_id = db.Column(db.BigInteger, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True, index=True)
+
+    action = db.Column(db.String(50), nullable=False, index=True)
+    # VD: login, login_failed, logout,
+    #     create_product, update_product, delete_product,
+    #     create_slot, update_slot, delete_slot,
+    #     create_machine, update_machine, delete_machine,
+    #     update_user, delete_user
+
+    detail = db.Column(db.Text, nullable=True)        # Mô tả chi tiết
+    target_type = db.Column(db.String(50), nullable=True, index=True)  # product, slot, machine, user, order
+    target_id = db.Column(db.Integer, nullable=True)   # ID đối tượng bị tác động
+
+    ip_address = db.Column(db.String(45), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    user = db.relationship("User", backref="admin_logs")
+
 
 # =======================
 # 9) WebAuthn / Passkey

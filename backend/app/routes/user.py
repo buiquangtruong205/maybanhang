@@ -5,6 +5,7 @@ from app import db
 from app.models import User
 from app.schemas import UserOut
 from app.utils import token_required
+from app.utils.admin_logger import log_admin_action
 
 user_bp = Blueprint('user', __name__)
 
@@ -60,6 +61,14 @@ def update_user(current_user, user_id):
         
         db.session.commit()
         
+        log_admin_action(
+            user_id=current_user.user_id,
+            action='update_user',
+            detail=f"Cập nhật user '{user.username}'",
+            target_type='user',
+            target_id=user_id
+        )
+        
         user_out = UserOut.model_validate(user)
         return jsonify({
             'success': True,
@@ -77,8 +86,18 @@ def update_user(current_user, user_id):
 @token_required
 def delete_user(current_user, user_id):
     user = User.query.get_or_404(user_id)
+    username = user.username
     db.session.delete(user)
     db.session.commit()
+    
+    log_admin_action(
+        user_id=current_user.user_id,
+        action='delete_user',
+        detail=f"Xóa user '{username}'",
+        target_type='user',
+        target_id=user_id
+    )
+    
     return jsonify({
         'success': True,
         'message': 'User deleted successfully'

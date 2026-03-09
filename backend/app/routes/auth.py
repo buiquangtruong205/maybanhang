@@ -5,6 +5,7 @@ from app import db
 from app.models import User
 from app.schemas import UserCreate, UserOut, Token
 from app.utils import token_required, generate_token
+from app.utils.admin_logger import log_admin_action
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -70,6 +71,11 @@ def login():
         user = User.query.filter_by(username=json_data.get('username')).first()
         
         if not user or not check_password_hash(user.password, json_data.get('password')):
+            log_admin_action(
+                user_id=user.user_id if user else None,
+                action='login_failed',
+                detail=f"Login thất bại cho username: {json_data.get('username')}"
+            )
             return jsonify({
                 'success': False,
                 'message': 'Invalid credentials'
@@ -77,6 +83,12 @@ def login():
         
         token = generate_token(user.username)
         token_out = Token(access_token=token, token_type='bearer')
+        
+        log_admin_action(
+            user_id=user.user_id,
+            action='login',
+            detail=f"Đăng nhập thành công: {user.username}"
+        )
         
         return jsonify({
             'success': True,

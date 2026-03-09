@@ -4,6 +4,7 @@ from app import db
 from app.models import Slot
 from app.schemas import SlotCreate, SlotOut
 from app.utils import token_required
+from app.utils.admin_logger import log_admin_action
 
 slot_bp = Blueprint('slot', __name__)
 
@@ -59,6 +60,14 @@ def create_slot(current_user):
         db.session.add(new_slot)
         db.session.commit()
         
+        log_admin_action(
+            user_id=current_user.user_id,
+            action='create_slot',
+            detail=f"Tạo slot '{new_slot.slot_code}' cho máy {new_slot.machine_id}",
+            target_type='slot',
+            target_id=new_slot.slot_id
+        )
+        
         slot_out = SlotOut.model_validate(new_slot)
         return jsonify({
             'success': True,
@@ -111,6 +120,14 @@ def update_slot(current_user, slot_id):
         
         db.session.commit()
         
+        log_admin_action(
+            user_id=current_user.user_id,
+            action='update_slot',
+            detail=f"Cập nhật slot '{slot.slot_code}' máy {slot.machine_id}",
+            target_type='slot',
+            target_id=slot_id
+        )
+        
         slot_out = SlotOut.model_validate(slot)
         return jsonify({
             'success': True,
@@ -134,8 +151,19 @@ def delete_slot(current_user, slot_id):
             'success': False,
             'message': 'Slot not found'
         }), 404
+    slot_code = slot.slot_code
+    machine_id = slot.machine_id
     db.session.delete(slot)
     db.session.commit()
+    
+    log_admin_action(
+        user_id=current_user.user_id,
+        action='delete_slot',
+        detail=f"Xóa slot '{slot_code}' máy {machine_id}",
+        target_type='slot',
+        target_id=slot_id
+    )
+    
     return jsonify({
         'success': True,
         'message': 'Slot deleted successfully'

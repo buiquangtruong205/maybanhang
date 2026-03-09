@@ -2,10 +2,15 @@
 WebSocket module for real-time payment notifications
 Uses Flask-SocketIO for WebSocket support
 """
+import os
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # Initialize SocketIO with CORS support
-socketio = SocketIO(cors_allowed_origins="*", async_mode='threading')
+# Allow specific origins from environment, default to * for backward compatibility
+cors_origins = os.environ.get('CORS_ORIGINS', '*')
+if cors_origins != '*':
+    cors_origins = cors_origins.split(',')
+socketio = SocketIO(cors_allowed_origins=cors_origins, async_mode='threading')
 
 # Track connected clients per order
 connected_clients = {}
