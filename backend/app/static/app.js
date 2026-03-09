@@ -770,6 +770,25 @@ async function handleFormSubmit(e) {
         }
     });
 
+    // Validate số lượng tồn kho không vượt quá sức chứa (slot)
+    if (currentFormType === 'slot') {
+        // Kiểm tra trùng mã khe trên cùng một máy
+        const isDuplicate = slotsCache.some(s =>
+            s.machine_id == data.machine_id &&
+            s.slot_code == data.slot_code &&
+            s.slot_id != currentEditId
+        );
+        if (isDuplicate) {
+            showToast('Khe đã có sản phẩm', 'error');
+            return;
+        }
+
+        if (data.stock > data.capacity) {
+            showToast(`Số lượng tồn kho (${data.stock}) không được vượt quá sức chứa (${data.capacity})! Vui lòng sửa lại.`, 'error');
+            return;
+        }
+    }
+
     // Handle file upload for product images
     if (currentFormType === 'product') {
         const fileInput = document.getElementById('imageFile');
@@ -836,13 +855,19 @@ function formatPrice(price) {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
 }
 
+let toastTimeout = null;
+
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
     toast.textContent = message;
     toast.className = `toast show ${type}`;
 
-    setTimeout(() => {
+    // Clear previous timeout to prevent race conditions
+    if (toastTimeout) clearTimeout(toastTimeout);
+
+    toastTimeout = setTimeout(() => {
         toast.classList.remove('show');
+        toastTimeout = null;
     }, 3000);
 }
 

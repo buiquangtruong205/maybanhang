@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 
 class SlotCreate(BaseModel):
@@ -7,15 +7,15 @@ class SlotCreate(BaseModel):
     slot_code: str
     product_id: Optional[int] = None
     stock: int = 0
-    capacity: int = Field(10, ge=0, le=10)
+    capacity: int = Field(10, ge=1)
 
-    @root_validator
-    def stock_not_exceed_capacity(cls, values):
-        stock = values.get('stock', 0)
-        cap = values.get('capacity', 0)
-        if stock > cap:
-            raise ValueError('stock cannot exceed capacity')
-        return values
+    @model_validator(mode='after')
+    def stock_not_exceed_capacity(self):
+        if self.stock > self.capacity:
+            raise ValueError(
+                f'Số lượng tồn kho ({self.stock}) không được vượt quá sức chứa ({self.capacity})'
+            )
+        return self
 
 class SlotOut(BaseModel):
     slot_id: int

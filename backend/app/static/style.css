@@ -447,13 +447,17 @@ body {
     color: #fff;
     font-weight: 500;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-    transform: translateX(400px);
-    transition: transform 0.3s ease;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(20px);
+    transition: opacity 0.4s ease, visibility 0.4s ease, transform 0.4s ease;
     z-index: 2000;
 }
 
 .toast.show {
-    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
 }
 
 .toast.error {

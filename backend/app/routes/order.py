@@ -42,7 +42,7 @@ def create_order():
             }), 400
         data = OrderCreate(**json_data)
         
-        # Tìm slot và kiểm tra stock
+        # Tìm slot và kiểm tra stock (tránh block lock DB trong demo)
         slot = Slot.query.get(data.slot_id)
         
         if not slot:
@@ -125,6 +125,31 @@ def create_pending_order():
             }), 404
         
         # Tạo order với status pending (chưa thanh toán)
+        # Fix #3: Tính toán số lượng stock thực tế còn lại = tổng stock - tổng pending orders
+        # (Để tránh trường hợp nhiều người quét tạo pending order nhưng không thanh toán, 
+        #  khiến người khác mua ảo được)
+        from sqlalchemy import func
+        from datetime import datetime, timedelta
+        
+        # Chỉ tính các pending order trong vòng 15 phút gần nhất (coi như timeout)
+        timeout_threshold = datetime.utcnow() - timedelta(minutes=15)
+        
+        pending_qty = db.session.query(func.sum(Order.quantity)).filter(
+            Order.product_id == product_id,
+            Order.status_payment == 'pending',
+            Order.created_at >= timeout_threshold
+        ).scalar() or 0
+        
+        # Check available stock vs product total stock (if slot is not specified)
+        # For simplicity, we assume we check against product's total stock
+        available_stock = product.stock - pending_qty
+        
+        if available_stock < 1:
+            return jsonify({
+                'success': False,
+                'message': 'Sản phẩm tạm thời hết hàng hoặc đang có người khác đặt mua. Vui lòng thử lại sau.'
+            }), 400
+        
         new_order = Order(
             product_id=product_id,
             price_snapshot=price_snapshot,
@@ -173,9 +198,29 @@ def complete_order(order_id):
         order.status_slots = 'completed'
         
         # Giảm stock trong slot
-        slot = Slot.query.get(order.slot_id)
-        if slot and slot.stock > 0:
-            slot.stock -= 1
+        qty = getattr(order, 'quantity', 1)
+        slot = None
+        if order.slot_id:
+            slot = Slot.query.get(order.slot_id)
+        else:
+            slot = Slot.query.filter(Slot.product_id == order.product_id, Slot.stock >= qty).first()
+            if not slot:
+                 slot = Slot.query.filter(Slot.product_id == order.product_id, Slot.stock > 0).first()
+
+        if slot:
+            if order.slot_id is None:
+                order.slot_id = slot.slot_id
+            if slot.stock >= qty:
+                slot.stock -= qty
+            else:
+                slot.stock = 0
+                
+            # Requirement: If total stock of product becomes 0, set product to inactive
+            if slot.stock == 0:
+                product = Product.query.get(slot.product_id)
+                if product and product.stock == 0:
+                    product.active = False
+                    print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (total stock=0)")
         
         db.session.commit()
         

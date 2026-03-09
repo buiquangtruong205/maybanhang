@@ -308,11 +308,37 @@ def create_order_from_machine(machine_id):
                         'message': 'Product is not assigned to any slot in this machine'
                      }), 400
         
-        # Kiểm tra stock
-        if slot and slot.stock < quantity:
+        # Tính toán stock có sẵn thực tế (Available Stock = Stock - Pending Orders)
+        from sqlalchemy import func
+        from datetime import datetime, timedelta
+        
+        timeout_threshold = datetime.utcnow() - timedelta(minutes=15)
+        
+        # Chỉ tính Pending Order thuộc cùng machine này, cho cùng một product này
+        # Nếu muốn chặt chẽ hơn, có thể tính cả slot_id.
+        query = db.session.query(func.sum(Order.quantity)).filter(
+            Order.product_id == product_id,
+            Order.status_payment == 'pending',
+            Order.created_at >= timeout_threshold
+        )
+        
+        # Lấy danh sách slot_id của machine này
+        machine_slot_ids = [s.slot_id for s in Slot.query.filter_by(machine_id=machine_id).all()]
+        if machine_slot_ids:
+            query = query.filter(Order.slot_id.in_(machine_slot_ids))
+            
+        pending_qty = query.scalar() or 0
+        
+        # Lấy tổng stock của product trong toàn bộ máy này
+        machine_stock = sum(s.stock for s in Slot.query.filter_by(machine_id=machine_id, product_id=product_id).all())
+        
+        available_stock = machine_stock - pending_qty
+        
+        # Kiểm tra stock (có tính pending)
+        if available_stock < quantity:
             return jsonify({
                 'success': False,
-                'message': f'Insufficient stock. Available: {slot.stock}'
+                'message': f'Sản phẩm tạm thời hết hàng hoặc có người khác đang đặt lệnh. Khả dụng: {available_stock}'
             }), 400
         
         # Tính giá
@@ -743,7 +769,7 @@ def cash_insert(machine_id):
             # Ghi lại tiền thừa tại bản ghi vừa tạo
             deposit.change = int(change)
 
-            # Giảm stock trong slot
+            # Giảm stock trong slot 
             if order.slot_id:
                 slot = Slot.query.get(order.slot_id)
                 if slot:
@@ -756,9 +782,10 @@ def cash_insert(machine_id):
 
                     if slot.stock == 0:
                         product = Product.query.get(slot.product_id)
-                        if product:
+                        # Check total stock across all slots using the property defined in Product model
+                        if product and product.stock == 0:
                             product.active = False
-                            print(f"⚠️ Product '{product.product_name}' marked INACTIVE (stock=0)")
+                            print(f"⚠️ Product '{product.product_name}' marked INACTIVE (total stock=0)")
 
             # Tạo Transaction (tiền mặt)
             existing_tx = Transaction.query.filter_by(order_id=order_id).first()

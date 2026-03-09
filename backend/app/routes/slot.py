@@ -45,6 +45,15 @@ def create_slot(current_user):
                 'message': 'Request body must be valid JSON'
             }), 400
         data = SlotCreate(**json_data)
+        
+        # Kiểm tra trùng mã khe trên cùng một máy
+        existing = Slot.query.filter_by(machine_id=data.machine_id, slot_code=data.slot_code).first()
+        if existing:
+            return jsonify({
+                'success': False,
+                'message': 'Khe đã có sản phẩm'
+            }), 400
+            
         new_slot = Slot(**data.model_dump())
         
         db.session.add(new_slot)
@@ -82,6 +91,18 @@ def update_slot(current_user, slot_id):
             }), 400
         data = SlotCreate(**json_data)
         
+        # Kiểm tra trùng mã khe trên cùng một máy (loại trừ slot hiện tại)
+        existing = Slot.query.filter(
+            Slot.machine_id == data.machine_id,
+            Slot.slot_code == data.slot_code,
+            Slot.slot_id != slot_id
+        ).first()
+        if existing:
+            return jsonify({
+                'success': False,
+                'message': 'Khe đã có sản phẩm'
+            }), 400
+            
         slot.machine_id = data.machine_id
         slot.slot_code = data.slot_code
         slot.product_id = data.product_id

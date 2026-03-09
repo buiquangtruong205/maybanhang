@@ -11,6 +11,16 @@ from services.payos_service import (
 )
 from app.schemas.payment import PaymentCreate, WebhookPayload
 from app.websocket import emit_payment_success
+import os
+import json
+
+def debug_log(msg):
+    log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'debug_payment.log')
+    try:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(msg + '\n')
+    except:
+        pass
 
 payment_bp = Blueprint('payment', __name__)
 
@@ -121,7 +131,7 @@ def payment_webhook():
             print(f"✅ Payment successful: payment_code={payment_code}, order_id={order_id}, amount={amount}")
             
             # Import models for database operations
-            from app.models import Order, Slot, Transaction
+            from app.models import Order, Slot, Transaction, Product
             from app import db
             
             # Tìm order theo order_id (đã parse từ payment_code)
@@ -134,24 +144,41 @@ def payment_webhook():
                     order.status_payment = 'completed'
                     order.status_slots = 'pending'
                     
-                    # Giảm stock trong slot
-                    slot = Slot.query.get(order.slot_id)
+                    debug_log(f"WEBHOOK: Processing order #{order_id}, product_id={order.product_id}, slot_id={order.slot_id}")
+                    
+                    # Giảm stock trong slot (Sử dụng with_for_update để tránh Race Condition)
+                    qty = getattr(order, 'quantity', 1)
+                    slot = None
+                    if order.slot_id:
+                        slot = Slot.query.get(order.slot_id)
+                    else:
+                        slot = Slot.query.filter(Slot.product_id == order.product_id, Slot.stock >= qty).first()
+                        if not slot:
+                             slot = Slot.query.filter(Slot.product_id == order.product_id, Slot.stock > 0).first()
+
+                    debug_log(f"WEBHOOK: Searched for slot with product_id={order.product_id}, qty>={qty}. Result: {slot.slot_id if slot else 'None'}")
+
                     if slot:
-                        # Use order.quantity if available, else 1
-                        qty = getattr(order, 'quantity', 1)
+                        if order.slot_id is None:
+                            order.slot_id = slot.slot_id
+                        
                         if slot.stock >= qty:
                             slot.stock -= qty
-                            print(f"📦 Stock reduced for slot {order.slot_id}: {slot.stock + qty} -> {slot.stock}")
+                            print(f"📦 Stock reduced for slot {slot.slot_id}: {slot.stock + qty} -> {slot.stock}")
                         else:
-                            print(f"⚠️ Stock insufficient for slot {order.slot_id}: needed {qty}, had {slot.stock}")
+                            print(f"⚠️ Stock insufficient for slot {slot.slot_id}: needed {qty}, had {slot.stock}")
                             slot.stock = 0 # Force to 0? Or just subtract what we can? Best to just subtract/force.
                         
-                        # Requirement: If stock becomes 0, set product to inactive
+                        # Requirement: If total stock of product becomes 0, set product to inactive
                         if slot.stock == 0:
                             product = Product.query.get(slot.product_id)
-                            if product:
+                            # Check total stock across all slots using the property defined in Product model
+                            if product and product.stock == 0:
                                 product.active = False
-                                print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (stock=0)")
+                                debug_log(f"WEBHOOK: Product {product.product_id} deactivated")
+                                print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (total stock=0)")
+                    else:
+                        debug_log(f"WEBHOOK: No slot found for product {order.product_id}!")
                     
                     # Kiểm tra xem đã có transaction chưa (tránh duplicate)
                     existing_transaction = Transaction.query.filter_by(order_id=order_id).first()
@@ -254,7 +281,7 @@ def check_payment_status(order_code):
             
             # Nếu PayOS báo đã thanh toán, sync về database
             if is_paid:
-                from app.models import Order, Slot, Transaction
+                from app.models import Order, Slot, Transaction, Product
                 from app import db
                 
                 # Attempt to find order. Logic fix: if order_code is large (payment_code), parse it.
@@ -271,6 +298,7 @@ def check_payment_status(order_code):
                 elif order.status_payment != 'pending':
                     print(f"ℹ️ Order #{order_code} already has status: {order.status_payment}, skipping sync")
                 else:
+                    debug_log(f"POLL: Syncing payment status for order #{order_code}")
                     print(f"🔄 Syncing payment status for order #{order_code} from PayOS to database")
                     
                     try:
@@ -278,24 +306,40 @@ def check_payment_status(order_code):
                         # để Arduino poll /iot/pending-orders và nhả hàng
                         order.status_payment = 'completed'
                         order.status_slots = 'pending'
+
+                        debug_log(f"POLL: Processing order #{real_order_id}, product_id={order.product_id}, slot_id={order.slot_id}")
                         
-                        # Giảm stock trong slot
-                        slot = Slot.query.get(order.slot_id)
-                        slot = Slot.query.get(order.slot_id)
+                        # Giảm stock trong slot (Sử dụng with_for_update để tránh Race Condition)
+                        qty = getattr(order, 'quantity', 1)
+                        slot = None
+                        if order.slot_id:
+                            slot = Slot.query.get(order.slot_id)
+                        else:
+                            slot = Slot.query.filter(Slot.product_id == order.product_id, Slot.stock >= qty).first()
+                            if not slot:
+                                 slot = Slot.query.filter(Slot.product_id == order.product_id, Slot.stock > 0).first()
+
+                        debug_log(f"POLL: Searched for slot with product_id={order.product_id}, qty>={qty}. Result: {slot.slot_id if slot else 'None'}")
+
                         if slot:
-                            qty = getattr(order, 'quantity', 1)
+                            if order.slot_id is None:
+                                order.slot_id = slot.slot_id
+                            
                             if slot.stock >= qty:
                                 slot.stock -= qty
-                                print(f"📦 Stock reduced for slot {order.slot_id}: {slot.stock + qty} -> {slot.stock}")
+                                print(f"📦 Stock reduced for slot {slot.slot_id}: {slot.stock + qty} -> {slot.stock}")
                             else:
                                 slot.stock = 0
 
-                            # Requirement: If stock becomes 0, set product to inactive
+                            # Requirement: If total stock of product becomes 0, set product to inactive
                             if slot.stock == 0:
                                 product = Product.query.get(slot.product_id)
-                                if product:
+                                if product and product.stock == 0:
                                     product.active = False
-                                    print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (stock=0)")
+                                    debug_log(f"POLL: Product {product.product_id} deactivated")
+                                    print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (total stock=0)")
+                        else:
+                            debug_log(f"POLL: No slot found for product {order.product_id}!")
                         
                         # Kiểm tra xem đã có transaction chưa
                         existing_transaction = Transaction.query.filter_by(order_id=real_order_id).first()
@@ -363,7 +407,7 @@ def sync_payment_status(order_code):
     Useful for debugging or when webhook fails.
     """
     try:
-        from app.models import Order, Slot, Transaction
+        from app.models import Order, Slot, Transaction, Product
         from app import db
         
         # Kiểm tra order có tồn tại không
@@ -429,21 +473,31 @@ def sync_payment_status(order_code):
             order.status_payment = 'completed'
             order.status_slots = 'pending'
             
-            # Giảm stock
-            slot = Slot.query.get(order.slot_id)
+            # Giảm stock (Sử dụng with_for_update để tránh Race Condition)
+            qty = getattr(order, 'quantity', 1)
+            slot = None
+            if order.slot_id:
+                slot = Slot.query.get(order.slot_id)
+            else:
+                slot = Slot.query.filter(Slot.product_id == order.product_id, Slot.stock >= qty).first()
+                if not slot:
+                     slot = Slot.query.filter(Slot.product_id == order.product_id, Slot.stock > 0).first()
+
             if slot:
-                qty = getattr(order, 'quantity', 1)
+                if order.slot_id is None:
+                    order.slot_id = slot.slot_id
+
                 if slot.stock >= qty:
                     slot.stock -= qty
                 else: 
                      slot.stock = 0
                 
-                # Requirement: If stock becomes 0, set product to inactive
+                # Requirement: If total stock of product becomes 0, set product to inactive
                 if slot.stock == 0:
                     product = Product.query.get(slot.product_id)
-                    if product:
+                    if product and product.stock == 0:
                         product.active = False
-                        print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (stock=0)")
+                        print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (total stock=0)")
             
             # Tạo transaction nếu chưa có
             existing_transaction = Transaction.query.filter_by(order_id=real_order_id).first()
@@ -503,6 +557,23 @@ def cancel_payment_link(order_code):
         result = cancel_payment(order_code)
         
         if result.get('success'):
+            # Fix #4: Cập nhật database
+            from app.models import Order
+            from app import db
+                
+            real_order_id = order_code
+            order = Order.query.get(order_code)
+                
+            if not order and order_code > 10000:
+                real_order_id = order_code // 10000
+                order = Order.query.get(real_order_id)
+                    
+            if order and order.status_payment == 'pending':
+                order.status_payment = 'cancelled'
+                order.status_slots = 'cancelled'
+                db.session.commit()
+                print(f"✅ Order #{real_order_id} marked as cancelled in DB")
+                
             return jsonify({
                 'success': True,
                 'message': 'Payment cancelled successfully',
@@ -544,4 +615,35 @@ def payment_cancel_page():
         'success': False,
         'message': 'Payment was cancelled',
         'order_code': order_code
+    })
+
+@payment_bp.route('/debug-db', methods=['GET'])
+def debug_db():
+    from app.models import Order, Slot
+    orders = Order.query.order_by(Order.order_id.desc()).limit(5).all()
+    slots = Slot.query.order_by(Slot.slot_id.asc()).limit(15).all()
+    
+    logs = ""
+    log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'debug_payment.log')
+    if os.path.exists(log_path):
+        with open(log_path, 'r', encoding='utf-8') as f:
+            logs = f.read()
+            
+    return jsonify({
+        "orders": [{
+            "id": o.order_id,
+            "product": o.product_id,
+            "slot": o.slot_id,
+            "qty": o.quantity,
+            "pay": o.status_payment,
+            "slots_status": o.status_slots
+        } for o in orders],
+        "slots": [{
+            "id": s.slot_id,
+            "code": s.slot_code,
+            "product": s.product_id,
+            "stock": s.stock,
+            "capacity": s.capacity
+        } for s in slots],
+        "logs": logs
     })
