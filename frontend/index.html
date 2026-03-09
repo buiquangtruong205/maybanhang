@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vending Machine</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Raleway:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* ── page layout ── */
+    .page-wrap {
+      max-width: 1100px; margin: 0 auto;
+      padding: 2rem 3rem 3rem;
+      position: relative; z-index: 1;
+      animation: fadeUp .45s ease both;
+    }
+
+    /* ── filter bar ── */
+    .fbar {
+      display: flex; align-items: center; gap: .7rem;
+      margin-bottom: 1.75rem; flex-wrap: wrap;
+    }
+    .fbar-lbl { font-size: .62rem; letter-spacing: .32em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+    .fpill {
+      padding: .38rem 1rem;
+      border: 1px solid var(--border2); border-radius: 50px;
+      font-size: .68rem; font-weight: 500; letter-spacing: .15em; text-transform: uppercase;
+      color: var(--muted); background: transparent; cursor: pointer; transition: all .2s;
+      font-family: 'Raleway', sans-serif;
+    }
+    .fpill.active, .fpill:hover { border-color: var(--border); color: var(--gold); background: rgba(212,170,74,.07); }
+    .view-toggle { margin-left: auto; display: flex; gap: .4rem; }
+    .vbtn {
+      width: 32px; height: 32px; border: 1px solid var(--border2); border-radius: var(--r);
+      background: transparent; color: var(--muted); cursor: pointer;
+      display: grid; place-items: center; font-size: .9rem; transition: all .2s;
+    }
+    .vbtn.active, .vbtn:hover { border-color: var(--border); color: var(--gold); background: rgba(212,170,74,.07); }
+
+    /* ══════════════════════════════════════
+       LIST ROW
+    ══════════════════════════════════════ */
+    .prod-list { display: flex; flex-direction: column; gap: .85rem; }
+
+    .pl-row {
+      display: grid;
+      grid-template-columns: 140px 1fr auto;
+      align-items: stretch;
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: var(--r2);
+      overflow: hidden;
+      position: relative;
+      transition: border-color .25s, box-shadow .25s, transform .22s;
+      animation: fadeUp .4s ease both;
+    }
+    .pl-row:not(.oos):hover {
+      border-color: var(--border);
+      box-shadow: 0 10px 36px rgba(0,0,0,.45);
+      transform: translateY(-1px);
+    }
+    .pl-row.selected {
+      border-color: var(--gold) !important;
+      box-shadow: 0 0 0 2px rgba(212,170,74,.22), 0 10px 36px rgba(0,0,0,.45) !important;
+      background: linear-gradient(90deg, rgba(212,170,74,.04), var(--bg2) 60%);
+    }
+    .pl-row.oos { opacity: .42; }
+
+    /* thumbnail */
+    .pl-img-wrap {
+      width: 140px; height: 112px;
+      overflow: hidden; flex-shrink: 0; position: relative;
+    }
+    .pl-img-wrap img {
+      width: 100%; height: 100%; object-fit: cover;
+      filter: brightness(.85) saturate(.75);
+      transition: filter .35s, transform .5s;
+      display: block;
+    }
+    .pl-row:not(.oos):hover .pl-img-wrap img { filter: brightness(1) saturate(.9); transform: scale(1.05); }
+    /* fade edge */
+    .pl-img-wrap::after {
+      content: ''; position: absolute; top: 0; right: 0; width: 40px; height: 100%;
+      background: linear-gradient(to right, transparent, var(--bg2));
+      pointer-events: none;
+    }
+    .pl-row.selected .pl-img-wrap::after {
+      background: linear-gradient(to right, transparent, #1d1910);
+    }
+
+    /* checkmark badge */
+    .pl-check {
+      position: absolute; top: 9px; left: 9px; z-index: 6;
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--gold); color: var(--ink);
+      display: none; align-items: center; justify-content: center;
+      font-size: .8rem; font-weight: 700;
+      box-shadow: 0 2px 10px rgba(0,0,0,.55);
+    }
+    .pl-row.selected .pl-check { display: flex; }
+
+    /* OOS tag */
+    .pl-oos-tag {
+      position: absolute; top: 9px; left: 9px; z-index: 5;
+      padding: .22rem .7rem;
+      background: rgba(14,12,9,.9); border: 1px solid rgba(212,170,74,.28);
+      border-radius: var(--r);
+      font-size: .56rem; letter-spacing: .22em; text-transform: uppercase;
+      color: var(--gold); font-weight: 600;
+    }
+
+    /* info */
+    .pl-info {
+      padding: 1rem 1.25rem;
+      display: flex; flex-direction: column; justify-content: center; gap: .3rem;
+      min-width: 0;
+    }
+    .pl-cat  { font-size: .58rem; letter-spacing: .3em; text-transform: uppercase; color: var(--gold-dk); font-weight: 600; }
+    .pl-name { font-family: 'Cormorant Garamond', serif; font-size: 1.15rem; font-weight: 400; color: var(--cream); line-height: 1.25; }
+    .pl-price{ font-family: 'Cormorant Garamath', serif; font-size: 1.05rem; font-weight: 500; color: var(--gold); }
+
+    /* action area (right side) */
+    .pl-action {
+      padding: 1rem 1.5rem 1rem .75rem;
+      display: flex; flex-direction: column;
+      align-items: flex-end; justify-content: space-between;
+      gap: .5rem; flex-shrink: 0;
+    }
+    .pl-stock { font-size: .62rem; letter-spacing: .12em; color: var(--muted); }
+    .pl-stock.low { color: #c97a4c; }
+
+    /* qty controls */
+    .pl-qty-ctrl { display: flex; align-items: center; gap: .5rem; }
+    .pl-qty-btn {
+      width: 30px; height: 30px; border-radius: var(--r);
+      background: rgba(212,170,74,.1); border: 1px solid var(--border2);
+      color: var(--cream); font-size: 1.1rem; cursor: pointer;
+      display: grid; place-items: center; transition: all .2s;
+      font-family: 'Raleway', sans-serif;
+    }
+    .pl-qty-btn:hover { background: rgba(212,170,74,.22); border-color: var(--border); }
+    .pl-qty-num { font-family: 'Cormorant Garamond', serif; font-size: 1.1rem; min-width: 20px; text-align: center; color: var(--cream); }
+    .pl-add-btn {
+      padding: .42rem 1.15rem; height: 30px;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--gold); border-radius: var(--r);
+      font-size: .65rem; font-weight: 600; letter-spacing: .15em; text-transform: uppercase;
+      cursor: pointer; transition: all .2s; font-family: 'Raleway', sans-serif;
+      display: flex; align-items: center; gap: .4rem; white-space: nowrap;
+    }
+    .pl-add-btn:hover { background: rgba(212,170,74,.1); }
+    .pl-add-btn.selected-btn {
+      background: rgba(212,170,74,.12); border-color: var(--gold);
+      color: var(--gold-lt);
+    }
+
+    /* ══════════════════════════════════════
+       GRID VIEW (toggle)
+    ══════════════════════════════════════ */
+    .prod-list.grid-view {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1.25rem;
+    }
+    .prod-list.grid-view .pl-row {
+      grid-template-columns: 1fr;
+      grid-template-rows: 170px 1fr;
+    }
+    .prod-list.grid-view .pl-img-wrap {
+      width: 100%; height: 170px;
+    }
+    .prod-list.grid-view .pl-img-wrap::after { display: none; }
+    .prod-list.grid-view .pl-info { padding: .85rem 1rem .7rem; }
+    .prod-list.grid-view .pl-action {
+      flex-direction: row; align-items: center; justify-content: space-between;
+      padding: .65rem 1rem .9rem; border-top: 1px solid var(--border2);
+    }
+    .prod-list.grid-view .pl-stock { font-size: .58rem; }
+
+    /* ── loading ── */
+    .loading-wrap { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; padding: 6rem 2rem; }
+    .spinner { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--border2); border-top-color: var(--gold); animation: spin 1.1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-wrap p { font-size: .68rem; letter-spacing: .25em; text-transform: uppercase; color: var(--muted); }
+
+    /* ── redirect overlay ── */
+    .redirect-overlay {
+      position: fixed; inset: 0; z-index: 5000;
+      background: rgba(7,6,4,.92); backdrop-filter: blur(16px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.25rem;
+      opacity: 0; pointer-events: none; transition: opacity .35s ease;
+    }
+    .redirect-overlay.show { opacity: 1; pointer-events: all; }
+    .redirect-icon { font-size: 2.5rem; animation: popIn .4s cubic-bezier(.16,1,.3,1); }
+    .redirect-title { font-family: 'Cormorant Garamond', serif; font-size: 1.6rem; font-weight: 400; color: var(--gold); letter-spacing: .04em; }
+    .redirect-sub { font-size: .72rem; color: var(--muted); letter-spacing: .1em; }
+    .redirect-bar { width: 180px; height: 2px; background: rgba(212,170,74,.15); border-radius: 1px; overflow: hidden; }
+    .redirect-fill { height: 100%; background: linear-gradient(90deg, var(--gold-dk), var(--gold-lt)); animation: fillBar .8s ease forwards; }
+    @keyframes fillBar { from { width: 0 } to { width: 100% } }
+    @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    @media (max-width: 700px) {
+      .page-wrap { padding: 1.25rem 1rem 2rem; }
+      .pl-row { grid-template-columns: 100px 1fr; }
+      .pl-img-wrap { width: 100px; height: 100px; }
+      .pl-action { padding: .75rem 1rem .75rem .5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ HEADER — minimal ══════════════════════════════════ -->
+<header>
+  <div class="hdr">
+    <a class="brand" href="index.html">
+      <span class="brand-name">Vending Machine</span>
+      <span class="brand-sub">Smart &nbsp;·&nbsp; Premium &nbsp;·&nbsp; Automated</span>
+    </a>
+    <span class="clock" id="clock">--:--:--</span>
+  </div>
+</header>
+
+<!-- ═══ CASH WIDGET ══════════════════════════════════════ -->
+<div class="cash-widget" id="cash-widget">
+  <div class="cw-handle" id="cw-handle">
+    <div class="cw-grip"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <span class="cw-handle-title">Tiền Mặt</span>
+    <span class="cw-live-dot" id="cw-dot"></span>
+  </div>
+  <div class="cw-body">
+    <div class="cw-row">
+      <span class="cw-lbl">Đã nhét</span>
+      <span class="cw-val inserted" id="cw-inserted">0 ₫</span>
+    </div>
+    <div class="cw-row">
+      <span class="cw-lbl">Cần thêm</span>
+      <span class="cw-val needed" id="cw-remaining">—</span>
+    </div>
+    <div class="cw-prog-wrap">
+      <div class="cw-prog-track"><div class="cw-prog-fill" id="cw-prog"></div></div>
+      <div class="cw-pct" id="cw-pct">0%</div>
+    </div>
+    <div class="cw-bill" id="cw-bill">
+      <span class="cw-bill-icon">💵</span>
+      <div class="cw-bill-info">
+        <span class="cw-bill-amt" id="cw-bill-amt">—</span>
+        <span class="cw-bill-tag">Đã nhận từ máy</span>
+      </div>
+    </div>
+    <div class="cw-status" id="cw-status">Chờ nhận tiền...</div>
+    <button class="cw-reset" id="cw-reset">↺ Đặt lại</button>
+  </div>
+</div>
+
+<!-- ═══ MAIN ══════════════════════════════════════════════ -->
+<main class="page-wrap" style="padding-left: 240px;">
+
+  <!-- Filter bar -->
+  <div class="fbar">
+    <span class="fbar-lbl">Danh mục</span>
+    <button class="fpill active" data-cat="all">Tất cả</button>
+    <button class="fpill" data-cat="nuoc">Đồ uống</button>
+    <button class="fpill" data-cat="snack">Snack</button>
+    <button class="fpill" data-cat="banh">Bánh ngọt</button>
+    <div class="view-toggle">
+      <button class="vbtn active" id="vbtn-list" title="Danh sách">≡</button>
+      <button class="vbtn" id="vbtn-grid" title="Lưới">⊞</button>
+    </div>
+  </div>
+
+  <!-- Product list -->
+  <div class="prod-list" id="prod-list">
+    <div class="loading-wrap">
+      <div class="spinner"></div>
+      <p>Đang tải sản phẩm...</p>
+    </div>
+  </div>
+
+</main>
+
+<!-- ═══ REDIRECT OVERLAY ══════════════════════════════════ -->
+<div class="redirect-overlay" id="redirect-overlay">
+  <div class="redirect-icon">🛒</div>
+  <div class="redirect-title">Đã thêm vào giỏ</div>
+  <div class="redirect-sub" id="redirect-sub">Đang chuyển đến giỏ hàng...</div>
+  <div class="redirect-bar"><div class="redirect-fill"></div></div>
+</div>
+
+<!-- ═══ TOAST ════════════════════════════════════════════ -->
+<div class="toast" id="toast">
+  <span class="toast-dot"></span>
+  <span id="toast-msg"></span>
+</div>
+
+<!-- ═══ SCRIPT ═══════════════════════════════════════════ -->
+<script>
+/* ─────────────────────────────────────────────────────────
+   DATA
+───────────────────────────────────────────────────────── */
+var PRODUCTS = [
+  { id:'p1', name:'Evian Mineral Water 500ml',         price:28000,  stock:20, cat:'nuoc',  img:'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400&q=80' },
+  { id:'p2', name:'Matcha Latte Nhật Bản 330ml',       price:45000,  stock:8,  cat:'nuoc',  img:'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=400&q=80' },
+  { id:'p3', name:'Cold Brew Coffee Ethiopia 250ml',   price:55000,  stock:12, cat:'nuoc',  img:'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&q=80' },
+  { id:'p4', name:'Snack Hạnh Nhân Honey Roasted 80g', price:65000,  stock:6,  cat:'snack', img:'https://images.unsplash.com/photo-1508747703725-719777637510?w=400&q=80' },
+  { id:'p5', name:'Dark Chocolate 72% Lindt 100g',     price:120000, stock:4,  cat:'banh',  img:'https://images.unsplash.com/photo-1481391319762-47dff72954d9?w=400&q=80' },
+  { id:'p6', name:'Kombucha Raspberry 355ml',          price:52000,  stock:0,  cat:'nuoc',  img:'https://images.unsplash.com/photo-1570696516188-ade861b84a49?w=400&q=80' },
+  { id:'p7', name:'Macaron Mix Assorted 6 pcs',        price:95000,  stock:5,  cat:'banh',  img:'https://images.unsplash.com/photo-1558326567-98ae2405596b?w=400&q=80' },
+  { id:'p8', name:'Granola Bar Oat & Honey 45g',       price:38000,  stock:15, cat:'snack', img:'https://images.unsplash.com/photo-1606131731446-5568d87113aa?w=400&q=80' }
+];
+var CAT_LABELS    = { nuoc:'Đồ Uống', snack:'Snack', banh:'Bánh Ngọt' };
+var FALLBACK      = 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&q=80';
+var BILL_DENOMS   = [10000, 20000, 50000, 100000, 200000, 500000];
+var currentCat    = 'all';
+var isGridView    = false;
+var redirecting   = false;
+
+/* ─────────────────────────────────────────────────────────
+   CART  (qty always = 1 per product)
+───────────────────────────────────────────────────────── */
+function cartLoad() {
+  try { return JSON.parse(localStorage.getItem('vm_cart') || '[]'); }
+  catch(e) { return []; }
+}
+function cartSave(c) { localStorage.setItem('vm_cart', JSON.stringify(c)); }
+
+var cart = cartLoad();
+
+function inCart(id) { return cart.some(function(i) { return i.id === id; }); }
+function cartTotal() { return cart.reduce(function(s,i) { return s + i.price; }, 0); }
+
+/* Add product (qty=1) then redirect to cart */
+function selectProduct(prod) {
+  if (redirecting) return;
+  if (!inCart(prod.id)) {
+    cart.push({ id:prod.id, name:prod.name, price:prod.price, cat:prod.cat, img:prod.img, qty:1 });
+    cartSave(cart);
+    prodLog(prod, 'add', 1);
+  }
+  cwSync();
+  showRedirect(prod.name);
+}
+
+/* Remove (deselect) */
+function deselectProduct(prod) {
+  cart = cart.filter(function(i) { return i.id !== prod.id; });
+  cartSave(cart);
+  cwSync();
+  refreshRow(prod.id);
+}
+
+/* ─────────────────────────────────────────────────────────
+   REDIRECT OVERLAY
+───────────────────────────────────────────────────────── */
+function showRedirect(name) {
+  redirecting = true;
+  document.getElementById('redirect-sub').textContent = '"' + name.substring(0,30) + '" — Đang chuyển...';
+  document.getElementById('redirect-overlay').classList.add('show');
+  setTimeout(function() { location.href = 'cart.html'; }, 950);
+}
+
+/* ─────────────────────────────────────────────────────────
+   PRODUCT LOG
+───────────────────────────────────────────────────────── */
+function prodLog(prod, action, qty) {
+  try {
+    var log = JSON.parse(localStorage.getItem('vm_prod_log') || '[]');
+    log.unshift({ time:Date.now(), name:prod.name, price:prod.price, img:prod.img, cat:prod.cat, action:action, qty:qty });
+    if (log.length > 500) log = log.slice(0, 500);
+    localStorage.setItem('vm_prod_log', JSON.stringify(log));
+  } catch(e) {}
+}
+
+/* ─────────────────────────────────────────────────────────
+   FORMAT
+───────────────────────────────────────────────────────── */
+function fmt(n) { return n.toLocaleString('vi-VN') + ' ₫'; }
+
+/* ─────────────────────────────────────────────────────────
+   ROW REFRESH
+───────────────────────────────────────────────────────── */
+function refreshRow(id) {
+  var row = document.querySelector('.pl-row[data-id="' + id + '"]');
+  if (!row) return;
+  var sel = inCart(id);
+  row.classList.toggle('selected', sel);
+  var btn = row.querySelector('.pl-add-btn');
+  if (btn) {
+    btn.textContent = sel ? '✓ Đã chọn' : '✦ Thêm';
+    btn.className   = 'pl-add-btn' + (sel ? ' selected-btn' : '');
+  }
+}
+
+/* ─────────────────────────────────────────────────────────
+   RENDER
+───────────────────────────────────────────────────────── */
+function renderList(prods) {
+  var el = document.getElementById('prod-list');
+
+  if (!prods.length) {
+    el.innerHTML = '<div class="loading-wrap"><p>Không có sản phẩm</p></div>';
+    return;
+  }
+
+  var html = '';
+  prods.forEach(function(p, i) {
+    var isOOS = p.stock === 0;
+    var isLow = !isOOS && p.stock <= 5;
+    var sel   = inCart(p.id);
+    var delay = (i * 50) + 'ms';
+    var stockLabel = isOOS ? 'Hết hàng' : isLow ? 'Còn ' + p.stock + ' sp' : p.stock + ' sp';
+    var stockClass = isLow ? ' low' : '';
+
+    html += '<div class="pl-row' + (isOOS ? ' oos' : '') + (sel ? ' selected' : '') + '"'
+          + ' data-id="' + p.id + '" style="animation-delay:' + delay + '">'
+
+      /* check / oos badge */
+      + (isOOS
+          ? '<div class="pl-oos-tag">Hết hàng</div>'
+          : '<div class="pl-check">✓</div>')
+
+      /* thumbnail */
+      + '<div class="pl-img-wrap">'
+        + '<img src="' + p.img + '" alt="' + p.name + '" loading="lazy"'
+          + ' onerror="this.src=\'' + FALLBACK + '\'">'
+      + '</div>'
+
+      /* info */
+      + '<div class="pl-info">'
+        + '<div class="pl-cat">' + (CAT_LABELS[p.cat] || p.cat) + '</div>'
+        + '<div class="pl-name">' + p.name + '</div>'
+        + '<div class="pl-price">' + fmt(p.price) + '</div>'
+      + '</div>'
+
+      /* action */
+      + '<div class="pl-action">'
+        + '<span class="pl-stock' + stockClass + '">' + stockLabel + '</span>'
+        + (!isOOS
+          ? '<button class="pl-add-btn' + (sel ? ' selected-btn' : '') + '"'
+            + ' data-id="' + p.id + '">'
+            + (sel ? '✓ Đã chọn' : '✦ Thêm')
+            + '</button>'
+          : '')
+      + '</div>'
+
+    + '</div>';
+  });
+
+  el.innerHTML = html;
+}
+
+/* ─────────────────────────────────────────────────────────
+   CLICK DELEGATION
+───────────────────────────────────────────────────────── */
+document.getElementById('prod-list').addEventListener('click', function(e) {
+  var row = e.target.closest('.pl-row');
+  if (!row || row.classList.contains('oos') || redirecting) return;
+
+  var id   = row.dataset.id;
+  var prod = PRODUCTS.find(function(p) { return p.id === id; });
+  if (!prod) return;
+
+  /* If clicking the "Đã chọn" button → deselect only, no redirect */
+  var btn = e.target.closest('.pl-add-btn');
+  if (btn && inCart(id)) {
+    deselectProduct(prod);
+    return;
+  }
+
+  /* Any other click on row → select + redirect */
+  if (!inCart(id)) {
+    selectProduct(prod);
+  }
+});
+
+/* ─────────────────────────────────────────────────────────
+   FILTER + VIEW TOGGLE
+───────────────────────────────────────────────────────── */
+document.querySelectorAll('.fpill').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    currentCat = this.dataset.cat;
+    document.querySelectorAll('.fpill').forEach(function(b) { b.classList.remove('active'); });
+    this.classList.add('active');
+    renderList(filteredProds());
+  });
+});
+
+document.getElementById('vbtn-list').addEventListener('click', function() {
+  isGridView = false;
+  document.getElementById('prod-list').classList.remove('grid-view');
+  document.getElementById('vbtn-list').classList.add('active');
+  document.getElementById('vbtn-grid').classList.remove('active');
+  renderList(filteredProds());
+});
+document.getElementById('vbtn-grid').addEventListener('click', function() {
+  isGridView = true;
+  document.getElementById('prod-list').classList.add('grid-view');
+  document.getElementById('vbtn-grid').classList.add('active');
+  document.getElementById('vbtn-list').classList.remove('active');
+  renderList(filteredProds());
+});
+
+function filteredProds() {
+  if (currentCat === 'all') return PRODUCTS;
+  return PRODUCTS.filter(function(p) { return p.cat === currentCat; });
+}
+
+/* ─────────────────────────────────────────────────────────
+   TOAST
+───────────────────────────────────────────────────────── */
+var toastTimer;
+function showToast(msg) {
+  clearTimeout(toastTimer);
+  document.getElementById('toast-msg').textContent = msg;
+  var t = document.getElementById('toast');
+  t.classList.add('show');
+  toastTimer = setTimeout(function() { t.classList.remove('show'); }, 2600);
+}
+
+/* ─────────────────────────────────────────────────────────
+   CLOCK
+───────────────────────────────────────────────────────── */
+function tickClock() { document.getElementById('clock').textContent = new Date().toLocaleTimeString('vi-VN'); }
+tickClock(); setInterval(tickClock, 1000);
+
+/* ─────────────────────────────────────────────────────────
+   CASH WIDGET
+───────────────────────────────────────────────────────── */
+var cwInserted  = parseFloat(localStorage.getItem('vm_cash') || '0');
+var cwBillTimer = null;
+
+function cwSync() {
+  var total     = cartTotal();
+  var remaining = total > 0 ? Math.max(total - cwInserted, 0) : 0;
+  var pct       = total > 0 ? Math.min(cwInserted / total, 1) * 100 : 0;
+
+  document.getElementById('cw-inserted').textContent = fmt(cwInserted);
+  document.getElementById('cw-prog').style.width     = pct.toFixed(1) + '%';
+  document.getElementById('cw-pct').textContent      = pct.toFixed(0) + '%';
+
+  var remEl = document.getElementById('cw-remaining');
+  var dot   = document.getElementById('cw-dot');
+  var msg   = document.getElementById('cw-status');
+
+  if (total === 0) {
+    remEl.textContent = '—'; remEl.className = 'cw-val needed';
+    msg.textContent = 'Chọn sản phẩm để bắt đầu'; msg.className = 'cw-status';
+  } else if (cwInserted >= total) {
+    remEl.textContent = '✓ Đủ tiền'; remEl.className = 'cw-val done';
+    msg.textContent = '✓ Có thể thanh toán'; msg.className = 'cw-status ok';
+    dot.classList.remove('on');
+  } else {
+    remEl.textContent = fmt(remaining); remEl.className = 'cw-val needed';
+    msg.textContent = 'Chờ nhận tiền...'; msg.className = 'cw-status';
+  }
+}
+
+function cwReceiveBill(amount) {
+  cwInserted += amount;
+  localStorage.setItem('vm_cash', cwInserted);
+  var billEl = document.getElementById('cw-bill');
+  document.getElementById('cw-bill-amt').textContent = fmt(amount);
+  billEl.classList.add('show');
+  document.getElementById('cw-dot').classList.add('on');
+  clearTimeout(cwBillTimer);
+  cwBillTimer = setTimeout(function() {
+    billEl.classList.remove('show');
+    document.getElementById('cw-dot').classList.remove('on');
+  }, 2400);
+  cwSync();
+  showToast('Nhận ' + fmt(amount) + ' — Đã nhét: ' + fmt(cwInserted));
+}
+
+function cwStartSim() {
+  var delay = 4000 + Math.random() * 4000;
+  setTimeout(function() {
+    if (cartTotal() > 0 && cwInserted < cartTotal()) {
+      cwReceiveBill(BILL_DENOMS[Math.floor(Math.random() * BILL_DENOMS.length)]);
+    }
+    cwStartSim();
+  }, delay);
+}
+
+document.getElementById('cw-reset').addEventListener('click', function() {
+  cwInserted = 0; localStorage.removeItem('vm_cash');
+  document.getElementById('cw-bill').classList.remove('show');
+  document.getElementById('cw-dot').classList.remove('on');
+  cwSync();
+});
+
+/* ─────────────────────────────────────────────────────────
+   DRAGGABLE WIDGET
+───────────────────────────────────────────────────────── */
+(function() {
+  var widget = document.getElementById('cash-widget');
+  var handle = document.getElementById('cw-handle');
+  var drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  var pos = JSON.parse(localStorage.getItem('vm_cw_pos') || 'null');
+  if (pos) { widget.style.left = pos.x + 'px'; widget.style.top = pos.y + 'px'; widget.style.right = 'auto'; }
+
+  function startDrag(cx, cy) {
+    drag = true;
+    var r = widget.getBoundingClientRect();
+    sx = cx; sy = cy; ox = r.left; oy = r.top;
+    widget.classList.add('is-dragging');
+  }
+  function moveDrag(cx, cy) {
+    if (!drag) return;
+    var nx = Math.max(0, Math.min(ox + cx - sx, window.innerWidth  - widget.offsetWidth));
+    var ny = Math.max(0, Math.min(oy + cy - sy, window.innerHeight - widget.offsetHeight));
+    widget.style.left = nx + 'px'; widget.style.top = ny + 'px'; widget.style.right = 'auto';
+  }
+  function endDrag() {
+    if (!drag) return; drag = false;
+    widget.classList.remove('is-dragging');
+    localStorage.setItem('vm_cw_pos', JSON.stringify({ x:parseInt(widget.style.left), y:parseInt(widget.style.top) }));
+  }
+  handle.addEventListener('mousedown',  function(e) { startDrag(e.clientX, e.clientY); e.preventDefault(); });
+  document.addEventListener('mousemove', function(e) { moveDrag(e.clientX, e.clientY); });
+  document.addEventListener('mouseup',   endDrag);
+  handle.addEventListener('touchstart',  function(e) { startDrag(e.touches[0].clientX, e.touches[0].clientY); }, { passive:true });
+  document.addEventListener('touchmove',  function(e) { if(drag){ moveDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); } }, { passive:false });
+  document.addEventListener('touchend',   endDrag);
+})();
+
+/* ─────────────────────────────────────────────────────────
+   INIT
+───────────────────────────────────────────────────────── */
+setTimeout(function() {
+  renderList(PRODUCTS);
+  cwSync();
+  cwStartSim();
+}, 280);
+</script>
+</body>
+</html>

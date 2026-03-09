@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vending Machine — Thanh Toán</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Raleway:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════ -->
+<header>
+  <div class="hdr">
+    <a class="brand" href="index.html">
+      <span class="brand-name">Vending Machine</span>
+      <span class="brand-sub">Smart &nbsp;·&nbsp; Premium &nbsp;·&nbsp; Automated</span>
+    </a>
+    <span class="clock" id="clock">--:--:--</span>
+  </div>
+</header>
+
+<!-- ═══ MAIN ══════════════════════════════════════════════ -->
+<main class="shell" style="max-width:900px">
+  <div class="page-head">
+    <a class="back-link" href="cart.html">Quay lại giỏ hàng</a>
+    <h1 class="page-title">Thanh <em>toán</em></h1>
+  </div>
+
+  <div class="checkout-layout">
+    <!-- Methods -->
+    <div>
+      <div class="sec-label">Phương thức thanh toán</div>
+      <div class="methods-grid">
+        <div class="method-card" id="card-qr" data-method="qr">
+          <div class="method-tick">✓</div>
+          <div class="method-icon">📱</div>
+          <div class="method-name">QR / Chuyển khoản</div>
+          <div class="method-desc">Quét mã PayOS,<br>thanh toán trong vài giây</div>
+        </div>
+        <div class="method-card" id="card-cash" data-method="cash">
+          <div class="method-tick">✓</div>
+          <div class="method-icon">💵</div>
+          <div class="method-name">Tiền Mặt</div>
+          <div class="method-desc">Nhét tiền trực tiếp<br>vào khe của máy</div>
+        </div>
+      </div>
+      <button class="btn-confirm" id="btn-confirm" disabled>
+        Xác nhận &amp; Thanh toán
+      </button>
+    </div>
+
+    <!-- Order summary -->
+    <div class="order-panel">
+      <div class="order-title">Đơn hàng của bạn</div>
+      <div class="order-items" id="order-items"></div>
+      <div class="order-divider"></div>
+      <div class="order-total">
+        <span class="order-total-lbl">Tổng</span>
+        <span class="order-total-val" id="order-total">0 ₫</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ═══ MODAL: QR ════════════════════════════════════════ -->
+<div class="modal" id="modal-qr">
+  <div class="modal-bg" id="modal-qr-bg"></div>
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="modal-title">Quét mã QR</span>
+      <button class="modal-close" id="qr-close">✕</button>
+    </div>
+    <div class="qr-frame">
+      <div class="qr-border">
+        <img class="qr-img" id="qr-img" src="" alt="QR Code">
+      </div>
+    </div>
+    <div class="pi-table">
+      <div class="pi-row">
+        <span class="pi-lbl">Mã đơn hàng</span>
+        <span class="pi-val" id="qr-code">—</span>
+      </div>
+      <div class="pi-row">
+        <span class="pi-lbl">Số tiền</span>
+        <span class="pi-val" id="qr-amount">—</span>
+      </div>
+    </div>
+    <div class="wait-row">
+      <div class="wait-dot"></div>
+      Đang chờ xác nhận thanh toán...
+    </div>
+    <div class="timer-row">
+      <div class="timer-bar">
+        <div class="timer-fill" id="qr-timer-fill" style="width:100%"></div>
+      </div>
+      <span class="timer-lbl">Còn: <strong id="qr-countdown">05:00</strong></span>
+    </div>
+    <div style="display:flex;justify-content:center;gap:.75rem;margin-top:1.25rem">
+      <button class="btn-ghost" id="qr-simulate">✓ Mô phỏng thành công</button>
+      <button class="btn-ghost" id="qr-cancel">Hủy</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: Cash ══════════════════════════════════════ -->
+<div class="modal" id="modal-cash">
+  <div class="modal-bg" id="modal-cash-bg"></div>
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="modal-title">Thanh Toán Tiền Mặt</span>
+      <button class="modal-close" id="cash-close">✕</button>
+    </div>
+    <div class="cash-vis">
+      <span class="cash-vis-icon">🏧</span>
+      <p>Nhét tiền vào khe nhận tiền của máy</p>
+    </div>
+    <div class="cash-amounts">
+      <div class="ca-row">
+        <span class="ca-lbl">Cần thanh toán</span>
+        <span class="ca-val" id="ca-need">—</span>
+      </div>
+      <div class="ca-row">
+        <span class="ca-lbl">Đã nhét</span>
+        <span class="ca-val green" id="ca-inserted">0 ₫</span>
+      </div>
+      <div class="ca-row" id="ca-rem-row">
+        <span class="ca-lbl">Còn thiếu</span>
+        <span class="ca-val yellow" id="ca-remaining">—</span>
+      </div>
+      <div class="ca-row" id="ca-change-row" style="display:none">
+        <span class="ca-lbl">Tiền thừa trả lại</span>
+        <span class="ca-val cyan" id="ca-change">—</span>
+      </div>
+    </div>
+    <div class="cash-prog-row">
+      <div class="cash-prog-bar">
+        <div class="cash-prog-fill" id="cash-prog" style="width:0%"></div>
+      </div>
+      <span class="cash-prog-pct" id="cash-pct">0%</span>
+    </div>
+    <div class="cash-status">
+      <div class="wait-dot" style="background:var(--gold-lt)"></div>
+      Đang chờ nhận tiền...
+    </div>
+    <div style="display:flex;justify-content:center;margin-top:1rem">
+      <button class="btn-ghost" id="cash-cancel">Hủy</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: Success ═══════════════════════════════════ -->
+<div class="modal" id="modal-success">
+  <div class="modal-bg"></div>
+  <div class="modal-box">
+    <div class="suc-inner">
+      <div class="suc-emblem"><div class="suc-check"></div></div>
+      <div class="suc-title">Thanh Toán Thành Công</div>
+      <p class="suc-sub">Cảm ơn quý khách đã tin tưởng lựa chọn</p>
+      <p class="suc-code">Đơn hàng: <strong id="suc-code">—</strong></p>
+      <p class="suc-change" id="suc-change">Tiền thừa: <strong id="suc-change-amt">—</strong></p>
+      <button class="btn-ghost" id="suc-close">Mua hàng tiếp</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TOAST ════════════════════════════════════════════ -->
+<div class="toast" id="toast">
+  <span class="toast-dot"></span>
+  <span id="toast-msg"></span>
+</div>
+
+<!-- ═══ SCRIPT ═══════════════════════════════════════════ -->
+<script>
+/* ── Helpers ────────────────────────────────────────────── */
+function cartLoad() {
+  try { return JSON.parse(localStorage.getItem('vm_cart') || '[]'); }
+  catch(e) { return []; }
+}
+function cartSave(c) { localStorage.setItem('vm_cart', JSON.stringify(c)); }
+function fmt(n) { return n.toLocaleString('vi-VN') + ' ₫'; }
+function genCode() { return 'VM' + Date.now().toString().slice(-6); }
+
+var cart = cartLoad();
+var selMethod = null;
+var qrTimer   = null;
+var cashSim   = null;
+
+/* ── Render order summary ───────────────────────────────── */
+function renderOrder() {
+  var total = cart.reduce(function(s,i){ return s + i.price * i.qty; }, 0);
+  document.getElementById('order-total').textContent = fmt(total);
+
+  var el = document.getElementById('order-items');
+  if (!cart.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.8rem;text-align:center;padding:1rem 0">Giỏ hàng trống</div>';
+    return;
+  }
+  el.innerHTML = cart.map(function(i) {
+    return '<div class="order-item">' +
+      '<span class="oi-name">' + i.name + ' ×' + i.qty + '</span>' +
+      '<span class="oi-val">' + fmt(i.price * i.qty) + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+/* ── Method select ──────────────────────────────────────── */
+document.querySelectorAll('.method-card').forEach(function(card) {
+  card.addEventListener('click', function() {
+    document.querySelectorAll('.method-card').forEach(function(c){ c.classList.remove('selected'); });
+    this.classList.add('selected');
+    selMethod = this.dataset.method;
+    document.getElementById('btn-confirm').disabled = cart.length === 0;
+  });
+});
+
+document.getElementById('btn-confirm').addEventListener('click', function() {
+  if (!selMethod || !cart.length) return;
+  if (selMethod === 'qr') openQR();
+  else openCash();
+});
+
+/* ── Modal helpers ──────────────────────────────────────── */
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+/* ── QR payment ─────────────────────────────────────────── */
+function openQR() {
+  var total = cart.reduce(function(s,i){ return s + i.price*i.qty; }, 0);
+  var code  = genCode();
+  document.getElementById('qr-img').src =
+    'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=VM-' + code + '-' + total + '&color=1a1610&bgcolor=ffffff';
+  document.getElementById('qr-code').textContent   = code;
+  document.getElementById('qr-amount').textContent = fmt(total);
+  openModal('modal-qr');
+  startQRTimer(300);
+}
+
+function startQRTimer(totalSec) {
+  clearInterval(qrTimer);
+  var left = totalSec;
+  var fill = document.getElementById('qr-timer-fill');
+  var cd   = document.getElementById('qr-countdown');
+  function tick() {
+    var m = String(Math.floor(left / 60)).padStart(2, '0');
+    var s = String(left % 60).padStart(2, '0');
+    cd.textContent = m + ':' + s;
+    fill.style.width = (left / totalSec * 100) + '%';
+    if (left <= 0) { clearInterval(qrTimer); closeModal('modal-qr'); showToast('Hết thời gian thanh toán'); }
+    left--;
+  }
+  tick(); qrTimer = setInterval(tick, 1000);
+}
+
+document.getElementById('qr-close').addEventListener('click',  function(){ clearInterval(qrTimer); closeModal('modal-qr'); });
+document.getElementById('qr-cancel').addEventListener('click', function(){ clearInterval(qrTimer); closeModal('modal-qr'); });
+document.getElementById('modal-qr-bg').addEventListener('click', function(){ clearInterval(qrTimer); closeModal('modal-qr'); });
+document.getElementById('qr-simulate').addEventListener('click', function(){
+  clearInterval(qrTimer);
+  closeModal('modal-qr');
+  var t = cart.reduce(function(s,i){ return s+i.price*i.qty; }, 0);
+  var code = genCode();
+  saveTxLog(code, 'qr', t, 0);
+  showSuccess(code, 0);
+});
+
+/* ── Cash payment ───────────────────────────────────────── */
+function openCash() {
+  var total = cart.reduce(function(s,i){ return s + i.price*i.qty; }, 0);
+  document.getElementById('ca-need').textContent      = fmt(total);
+  document.getElementById('ca-inserted').textContent  = '0 ₫';
+  document.getElementById('ca-remaining').textContent = fmt(total);
+  document.getElementById('ca-rem-row').style.display    = '';
+  document.getElementById('ca-change-row').style.display = 'none';
+  document.getElementById('cash-prog').style.width = '0%';
+  document.getElementById('cash-pct').textContent  = '0%';
+  openModal('modal-cash');
+  simulateCash(total);
+}
+
+function simulateCash(total) {
+  clearInterval(cashSim);
+  var inserted = 0;
+  var steps = [5000, 10000, 10000, Math.ceil(total * 1.1)];
+  var i = 0;
+  cashSim = setInterval(function() {
+    if (i >= steps.length) { clearInterval(cashSim); return; }
+    inserted = Math.min(inserted + steps[i], total * 1.1);
+    i++;
+    var pct = Math.min(inserted / total, 1);
+    document.getElementById('ca-inserted').textContent  = fmt(inserted);
+    document.getElementById('cash-prog').style.width    = (pct * 100).toFixed(0) + '%';
+    document.getElementById('cash-pct').textContent     = (pct * 100).toFixed(0) + '%';
+    if (inserted >= total) {
+      clearInterval(cashSim);
+      var change = Math.round(inserted - total);
+      document.getElementById('ca-rem-row').style.display = 'none';
+      if (change > 0) {
+        document.getElementById('ca-change-row').style.display = '';
+        document.getElementById('ca-change').textContent = fmt(change);
+      }
+      setTimeout(function() {
+        closeModal('modal-cash');
+        var _code = genCode();
+        saveTxLog(_code, 'cash', total, change);
+        showSuccess(_code, change);
+      }, 1200);
+    } else {
+      document.getElementById('ca-remaining').textContent = fmt(total - inserted);
+    }
+  }, 1800);
+}
+
+document.getElementById('cash-close').addEventListener('click',  function(){ clearInterval(cashSim); closeModal('modal-cash'); });
+document.getElementById('cash-cancel').addEventListener('click', function(){ clearInterval(cashSim); closeModal('modal-cash'); });
+document.getElementById('modal-cash-bg').addEventListener('click', function(){ clearInterval(cashSim); closeModal('modal-cash'); });
+
+/* ── Log transaction ───────────────────────────────────── */
+function saveTxLog(code, method, total, change) {
+  try {
+    var log = JSON.parse(localStorage.getItem('vm_tx_log') || '[]');
+    log.unshift({
+      time: Date.now(),
+      code: code,
+      method: method,
+      total: total,
+      change: change || 0,
+      items: cart.map(function(i) { return { name:i.name, price:i.price, qty:i.qty, img:i.img }; })
+    });
+    if (log.length > 300) log = log.slice(0, 300);
+    localStorage.setItem('vm_tx_log', JSON.stringify(log));
+    /* also log each product as 'purchase' */
+    var plog = JSON.parse(localStorage.getItem('vm_prod_log') || '[]');
+    cart.forEach(function(i) {
+      plog.unshift({ time: Date.now(), name:i.name, price:i.price, img:i.img, cat:i.cat, action:'purchase', qty:i.qty });
+    });
+    if (plog.length > 500) plog = plog.slice(0, 500);
+    localStorage.setItem('vm_prod_log', JSON.stringify(plog));
+  } catch(e) {}
+}
+
+/* ── Success ────────────────────────────────────────────── */
+function showSuccess(code, change) {
+  document.getElementById('suc-code').textContent = code;
+  var chEl = document.getElementById('suc-change');
+  if (change > 0) {
+    chEl.style.display = '';
+    document.getElementById('suc-change-amt').textContent = fmt(change);
+  } else {
+    chEl.style.display = 'none';
+  }
+  openModal('modal-success');
+}
+
+document.getElementById('suc-close').addEventListener('click', function() {
+  closeModal('modal-success');
+  cartSave([]);
+  /* also clear cash widget */
+  localStorage.removeItem('vm_cash');
+  location.href = 'index.html';
+});
+
+/* ── Toast ──────────────────────────────────────────────── */
+var toastTimer;
+function showToast(msg) {
+  clearTimeout(toastTimer);
+  document.getElementById('toast-msg').textContent = msg;
+  var t = document.getElementById('toast');
+  t.classList.add('show');
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 2800);
+}
+
+/* ── Clock ──────────────────────────────────────────────── */
+function tickClock(){ document.getElementById('clock').textContent = new Date().toLocaleTimeString('vi-VN'); }
+tickClock(); setInterval(tickClock, 1000);
+
+/* ── Init ───────────────────────────────────────────────── */
+renderOrder();
+if (!cart.length) {
+  document.getElementById('btn-confirm').disabled = true;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vending Machine — Giỏ Hàng</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Raleway:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════ -->
+<header>
+  <div class="hdr">
+    <a class="brand" href="index.html">
+      <span class="brand-name">Vending Machine</span>
+      <span class="brand-sub">Smart &nbsp;·&nbsp; Premium &nbsp;·&nbsp; Automated</span>
+    </a>
+    <span class="clock" id="clock">--:--:--</span>
+  </div>
+</header>
+
+<!-- ═══ MAIN ══════════════════════════════════════════════ -->
+<main class="shell" style="max-width:1100px">
+  <div class="page-head">
+    <a class="back-link" href="index.html">Tiếp tục mua sắm</a>
+    <h1 class="page-title">Giỏ <em>hàng</em> của bạn</h1>
+  </div>
+
+  <div class="cart-layout">
+    <!-- Items -->
+    <div class="items-panel">
+      <div class="items-header">
+        <span class="items-title">Sản phẩm đã chọn — <span id="count-label">0 mục</span></span>
+        <button class="clear-btn" id="clear-btn">Xóa tất cả</button>
+      </div>
+      <div id="cart-items"></div>
+    </div>
+
+    <!-- Summary -->
+    <div class="summary-panel">
+      <div class="sum-title">Tóm tắt đơn hàng</div>
+      <div class="promo-row">
+        <input class="promo-input" id="promo-input" placeholder="Mã khuyến mãi">
+        <button class="promo-btn" id="promo-btn">Áp dụng</button>
+      </div>
+      <div class="sum-rows" id="sum-rows"></div>
+      <div class="sum-divider"></div>
+      <div class="sum-total-row">
+        <span class="sum-total-lbl">Tổng cộng</span>
+        <span class="sum-total-val" id="sum-total">0 ₫</span>
+      </div>
+      <button class="btn-checkout" id="btn-checkout" disabled
+              onclick="location.href='checkout.html'">
+        Tiến hành thanh toán →
+      </button>
+      <p class="sum-note">Đảm bảo thanh toán an toàn &nbsp;·&nbsp; Hỗ trợ QR & Tiền mặt</p>
+    </div>
+  </div>
+</main>
+
+<!-- ═══ TOAST ════════════════════════════════════════════ -->
+<div class="toast" id="toast">
+  <span class="toast-dot"></span>
+  <span id="toast-msg"></span>
+</div>
+
+<!-- ═══ SCRIPT ═══════════════════════════════════════════ -->
+<script>
+/* ── Helpers ────────────────────────────────────────────── */
+function cartLoad() {
+  try { return JSON.parse(localStorage.getItem('vm_cart') || '[]'); }
+  catch(e) { return []; }
+}
+function cartSave(c) { localStorage.setItem('vm_cart', JSON.stringify(c)); }
+function fmt(n) { return n.toLocaleString('vi-VN') + ' ₫'; }
+var FALLBACK = 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=200&q=80';
+var CAT_LABELS = { nuoc:'Đồ Uống', snack:'Snack', banh:'Bánh Ngọt' };
+
+var cart = cartLoad();
+
+/* ── Mutations ──────────────────────────────────────────── */
+function changeQty(id, delta) {
+  var item = cart.find(function(i){ return i.id === id; });
+  if (!item) return;
+  item.qty += delta;
+  if (item.qty <= 0) cart = cart.filter(function(i){ return i.id !== id; });
+  cartSave(cart);
+  render();
+}
+
+function removeItem(id) {
+  cart = cart.filter(function(i){ return i.id !== id; });
+  cartSave(cart);
+  render();
+}
+
+function clearCart() {
+  cart = [];
+  cartSave(cart);
+  render();
+}
+
+/* ── Render ─────────────────────────────────────────────── */
+function render() {
+  var total  = cart.reduce(function(s,i){ return s + i.price * i.qty; }, 0);
+  var count  = cart.reduce(function(s,i){ return s + i.qty; }, 0);
+
+  document.getElementById('count-label').textContent = count + ' mục';
+  document.getElementById('sum-total').textContent   = fmt(total);
+  document.getElementById('btn-checkout').disabled   = cart.length === 0;
+
+  /* items */
+  var itemsEl = document.getElementById('cart-items');
+  if (cart.length === 0) {
+    itemsEl.innerHTML =
+      '<div class="empty-cart">' +
+        '<div class="empty-icon">🛒</div>' +
+        '<div class="empty-title">Giỏ hàng trống</div>' +
+        '<div class="empty-sub">Quay lại để chọn sản phẩm</div>' +
+        '<a class="btn-ghost" href="index.html" style="margin-top:.5rem">Xem sản phẩm</a>' +
+      '</div>';
+  } else {
+    itemsEl.innerHTML = cart.map(function(item) {
+      return '<div class="cart-row">' +
+        '<img class="row-img" src="' + (item.img || '') + '" alt="' + item.name + '"' +
+             ' onerror="this.src=\'' + FALLBACK + '\'">' +
+        '<div>' +
+          '<div class="row-cat">' + (CAT_LABELS[item.cat] || '') + '</div>' +
+          '<div class="row-name">' + item.name + '</div>' +
+          '<div class="row-unit">' + fmt(item.price) + ' / sp</div>' +
+        '</div>' +
+        '<div class="row-right">' +
+          '<span class="row-total">' + fmt(item.price * item.qty) + '</span>' +
+          '<div class="qty-ctrl">' +
+            '<button class="qty-btn" data-id="' + item.id + '" data-d="-1">−</button>' +
+            '<span class="qty-val">' + item.qty + '</span>' +
+            '<button class="qty-btn" data-id="' + item.id + '" data-d="1">+</button>' +
+            '<button class="del-btn" data-del="' + item.id + '">✕</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  /* summary rows */
+  var sumEl = document.getElementById('sum-rows');
+  if (cart.length === 0) {
+    sumEl.innerHTML = '<div class="sum-row"><span class="sum-lbl">Chưa có sản phẩm</span><span class="sum-val">—</span></div>';
+  } else {
+    sumEl.innerHTML = cart.map(function(i) {
+      var label = i.name.length > 26 ? i.name.substring(0, 26) + '…' : i.name;
+      return '<div class="sum-row">' +
+        '<span class="sum-lbl">' + label + ' ×' + i.qty + '</span>' +
+        '<span class="sum-val">' + fmt(i.price * i.qty) + '</span>' +
+      '</div>';
+    }).join('');
+  }
+}
+
+/* ── Event delegation ───────────────────────────────────── */
+document.getElementById('cart-items').addEventListener('click', function(e) {
+  var qBtn = e.target.closest('[data-d]');
+  if (qBtn) { changeQty(qBtn.dataset.id, parseInt(qBtn.dataset.d)); return; }
+  var dBtn = e.target.closest('[data-del]');
+  if (dBtn) { removeItem(dBtn.dataset.del); }
+});
+document.getElementById('clear-btn').addEventListener('click', clearCart);
+document.getElementById('promo-btn').addEventListener('click', function() { showToast('Mã không hợp lệ hoặc đã hết hạn'); });
+
+/* ── Toast ──────────────────────────────────────────────── */
+var toastTimer;
+function showToast(msg) {
+  clearTimeout(toastTimer);
+  document.getElementById('toast-msg').textContent = msg;
+  var t = document.getElementById('toast');
+  t.classList.add('show');
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 2800);
+}
+
+/* ── Clock ──────────────────────────────────────────────── */
+function tickClock(){ document.getElementById('clock').textContent = new Date().toLocaleTimeString('vi-VN'); }
+tickClock(); setInterval(tickClock, 1000);
+
+/* ── Init ───────────────────────────────────────────────── */
+render();
+</script>
+</body>
+</html>
