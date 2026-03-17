@@ -1,23 +1,33 @@
 # Vending Machine Project
 
-Dự án **máy bán hàng tự động tích hợp IoT** cho phép quản lý và vận hành máy bán hàng thông minh từ xa. Hệ thống bao gồm:
+Dự án **máy bán hàng tự động tích hợp IoT** cho phép quản lý và vận hành máy bán hàng thông minh từ xa. Hệ thống hiện gồm:
 
-- 🤖 **Phần cứng (Arduino):** Điều khiển cơ cấu xuất hàng, đọc cảm biến và giao tiếp với server qua kết nối mạng.
+- 🤖 **Phần cứng:** Firmware ESP32, điều khiển cơ cấu xuất hàng, đọc cảm biến và giao tiếp với server qua mạng.
 - 🖥️ **Backend (Flask + PostgreSQL):** Quản lý sản phẩm, slot hàng, giao dịch, người dùng và bảo mật thiết bị IoT.
-- 🌐 **Frontend (Web):** Giao diện người dùng để chọn sản phẩm, thanh toán; giao diện admin để giám sát và quản lý hệ thống.
+- 🌐 **Giao diện Web:** Giao diện quản trị trong `backend/app/static` và giao diện máy bán hàng trong `CLIENT_machine/`.
 - 🔒 **Bảo mật:** Xác thực thiết bị bằng API key, phân quyền người dùng (admin/user), ghi log hoạt động.
 
 ---
 
 Xem poster của dự án tại đây:
 
-👉 [**Xem Poster (PDF)**](./poster.pdf)
+👉 [**Xem Poster (PDF)**](./docs/poster.pdf)
 
 > Nếu trình duyệt hỗ trợ, bạn có thể nhúng poster trực tiếp:
 
-<object data="./poster.pdf" type="application/pdf" width="100%" height="800px">
-  <p>Trình duyệt của bạn không hỗ trợ hiển thị PDF. Vui lòng <a href="./poster.pdf">tải về tại đây</a>.</p>
+<object data="./docs/poster.pdf" type="application/pdf" width="100%" height="800px">
+  <p>Trình duyệt của bạn không hỗ trợ hiển thị PDF. Vui lòng <a href="./docs/poster.pdf">tải về tại đây</a>.</p>
 </object>
+
+---
+
+## 📚 Tài Liệu
+
+- [Tài Liệu API](./docs/tai_lieu_api.md)
+- [Cấu Trúc Cơ Sở Dữ Liệu](./docs/cau_truc_co_so_du_lieu.md)
+- [Hướng Dẫn Docker](./docs/huong_dan_docker.md)
+- [Ghi Chú Bảo Mật](./docs/ghi_chu_bao_mat.md)
+- [Công Việc Cần Làm](./docs/cong_viec_can_lam.md)
 
 ---
 
@@ -35,9 +45,9 @@ Xem poster của dự án tại đây:
 - Quản lý thiết bị IoT: đăng ký, theo dõi trạng thái, thu hồi
 - Xem log bảo mật và cảnh báo bất thường
 
-### Phần Cứng (Arduino)
+### Phần Cứng
 - Nhận lệnh xuất hàng từ server qua HTTP/WebSocket
-- Điều khiển động cơ bước để đẩy sản phẩm ra
+- Điều khiển cơ cấu nhả hàng từ ESP32
 - Báo cáo trạng thái máy (nhiệt độ, tồn kho) về server
 
 ---
@@ -46,7 +56,7 @@ Xem poster của dự án tại đây:
 
 | Thành phần | Công nghệ |
 |------------|-----------|
-| **Phần cứng** | Arduino, ESP8266/ESP32 |
+| **Phần cứng** | ESP32-WROOM, TFT 2.8", cảm biến, cơ cấu nhả hàng |
 | **Backend** | Python, Flask, SQLAlchemy |
 | **Database** | PostgreSQL |
 | **Frontend** | HTML, CSS, JavaScript |
@@ -60,43 +70,47 @@ Xem poster của dự án tại đây:
 ```
 vending-machine-project/
 ├── backend/               # Flask API server
-│   ├── app/
-│   │   ├── models/        # Database models
-│   │   ├── routes/        # API endpoints
-│   │   └── static/        # Static files
-│   └── run.py
-├── frontend/              # Giao diện web người dùng
-│   ├── index.html
-│   ├── css/
-│   └── js/
-├── arduino/               # Code phần cứng Arduino
+├── CLIENT_machine/        # Giao diện máy bán hàng
+├── firmware/              # Firmware ESP32 / PlatformIO
+├── docs/                  # Tài liệu chi tiết
 ├── nginx.conf             # Cấu hình Nginx
-├── poster.pdf             # Poster dự án
 └── README.md
 ```
 
 ---
 
-## � Hướng Dẫn Cài Đặt
+## Hướng Dẫn Cài Đặt
+
+### Hướng Dẫn Chạy Nhanh (Docker)
+1. Copy file môi trường: `cp .env.example .env` (và điền KEY)
+2. Chạy hệ thống: `docker compose up -d --build`
+3. Nạp data mẫu: `cmd /c "docker compose exec -T db psql -U postgres -d vending_machine < seed.sql"`
+4. Truy cập: `http://localhost`
+
+Chi tiết xem tại: [**Hướng Dẫn Docker**](./docs/huong_dan_docker.md)
+
+### Yêu cầu
+- Docker / Docker Compose (khuyến nghị)
+- Trình duyệt Chrome/Edge
 
 ### Yêu cầu
 - Python 3.9+
 - PostgreSQL
-- Node.js (tuỳ chọn, cho dev frontend)
+- Docker / Docker Compose (khuyến nghị)
 
 ### Backend
 ```bash
 cd backend
-pip install -r requirements.txt
-cp .env.example .env      # Cấu hình biến môi trường
+pip install -r ../requirements.txt
+# tạo hoặc chỉnh sửa file .env ở thư mục gốc
 python run.py
 ```
 
-### Frontend
-Mở file `frontend/index.html` trực tiếp trên trình duyệt hoặc dùng Live Server.
+### Client Machine
+Mở `CLIENT_machine/index.html` trực tiếp trên trình duyệt hoặc phục vụ qua web server cục bộ.
 
-### Arduino
-Nạp code trong thư mục `arduino/` lên board bằng Arduino IDE, cập nhật địa chỉ IP server trong file config.
+### Firmware
+Dùng PlatformIO để nạp code trong thư mục `firmware/` lên ESP32, sau đó cập nhật thông tin Wi-Fi và server trong file cấu hình.
 
 ---
 

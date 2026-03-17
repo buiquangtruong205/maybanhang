@@ -24,6 +24,7 @@ DOMAIN = os.environ.get('DOMAIN', 'http://localhost:5000')
 MACHINE_KEYS = {
     'may1': 1,  # Key 'may1' corresponds to machine_id 1
     'may2': 2,  # Key 'may2' corresponds to machine_id 2
+    'maybanhang-v3': 3,  # Key for ESP32 Vending Machine V3
     # Add more keys as needed
 }
 

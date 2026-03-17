@@ -3,6 +3,20 @@ __pycache__/
 *.pyc
 .env
 instance/
+*.log
+*.ctl
+**/__pycache__/
 
-# Frontend environment (giá trị thật — không commit)
+# Frontend environment
 frontend/js/env.js
+CLIENT_machine/js/env.js
+
+# Firmware / PlatformIO
+.pio/
+.vscode/
+firmware/include/secrets.h
+firmware/test/
+*.bin
+*.elf
+firmware/.platformio-local/
+.platformio-local/

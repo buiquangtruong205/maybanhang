@@ -54,6 +54,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
+
     // Register form (chỉ dùng lần đầu)
     const registerForm = document.getElementById('registerForm');
     if (registerForm) {
@@ -86,6 +91,7 @@ async function handleLogin(e) {
         if (data.success) {
             token = data.data.access_token;
             localStorage.setItem('token', token);
+            currentUser = { username };
             showApp();
             showToast('Đăng nhập thành công!', 'success');
         } else {
@@ -110,7 +116,7 @@ async function handleRegister(e) {
         const data = await res.json();
 
         if (data.success) {
-            showToast('Đăng ký tài khoản thành công! Đang thiết lập Passkey...', 'success');
+            showToast('Đăng ký tài khoản thành công!', 'success');
 
             // Tự động đăng nhập với tài khoản vừa tạo
             const loginRes = await fetch(`${API_BASE}/login`, {
@@ -124,24 +130,8 @@ async function handleRegister(e) {
                 token = loginData.data.access_token;
                 localStorage.setItem('token', token);
                 currentUser = { username };
-
-                // Bắt buộc đăng ký Passkey
-                const passkeyResult = await registerPasskeyRequired();
-
-                if (passkeyResult) {
-                    showApp();
-                    showToast('Đăng ký hoàn tất! 🎉', 'success');
-                } else {
-                    // Nếu không đăng ký passkey, xóa tài khoản và đăng xuất
-                    await fetch(`${API_BASE}/users/me`, {
-                        method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    token = null;
-                    localStorage.removeItem('token');
-                    showLogin();
-                    showToast('Đăng ký bị hủy do không thiết lập Passkey', 'error');
-                }
+                showApp();
+                showToast('Đăng ký hoàn tất! 🎉', 'success');
             } else {
                 showToast(loginData.message, 'error');
             }
@@ -1071,18 +1061,14 @@ async function uploadImage(file) {
 
 // =======================
 // WebAuthn / Passkey Functions
+// Giữ lại để có thể bật lại sau này.
+// Hiện tại giao diện đăng nhập ưu tiên username/password nên không hiện nút Passkey.
 // =======================
 
-/**
- * Check if WebAuthn is supported by the browser
- */
 function isWebAuthnSupported() {
     return window.PublicKeyCredential !== undefined;
 }
 
-/**
- * Convert base64url to ArrayBuffer
- */
 function base64urlToBuffer(base64url) {
     const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
     const padLen = (4 - base64.length % 4) % 4;
@@ -1095,9 +1081,6 @@ function base64urlToBuffer(base64url) {
     return bytes.buffer;
 }
 
-/**
- * Convert ArrayBuffer to base64url
- */
 function bufferToBase64url(buffer) {
     const bytes = new Uint8Array(buffer);
     let binary = '';
@@ -1108,9 +1091,6 @@ function bufferToBase64url(buffer) {
     return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
-/**
- * Check passkey status for current user
- */
 async function checkPasskeyStatus() {
     if (!token) return;
 
@@ -1135,9 +1115,6 @@ async function checkPasskeyStatus() {
     }
 }
 
-/**
- * Register a new Passkey for the current user (REQUIRED - returns true/false)
- */
 async function registerPasskeyRequired() {
     if (!isWebAuthnSupported()) {
         showToast('Trình duyệt không hỗ trợ Passkey', 'error');
@@ -1152,7 +1129,6 @@ async function registerPasskeyRequired() {
     try {
         showToast('Vui lòng đăng ký Passkey để hoàn tất...', 'info');
 
-        // Step 1: Get registration options from server
         const beginRes = await fetch(`${API_BASE}/webauthn/register/begin`, {
             method: 'POST',
             headers: {
@@ -1167,10 +1143,7 @@ async function registerPasskeyRequired() {
             return false;
         }
 
-        // Parse the options
         const options = JSON.parse(beginData.data);
-
-        // Convert base64url fields to ArrayBuffer
         options.challenge = base64urlToBuffer(options.challenge);
         options.user.id = base64urlToBuffer(options.user.id);
 
@@ -1181,12 +1154,10 @@ async function registerPasskeyRequired() {
             }));
         }
 
-        // Step 2: Create credential using WebAuthn API
         const credential = await navigator.credentials.create({
             publicKey: options
         });
 
-        // Convert credential to JSON-serializable format
         const credentialData = {
             id: credential.id,
             rawId: bufferToBase64url(credential.rawId),
@@ -1198,12 +1169,10 @@ async function registerPasskeyRequired() {
             device_name: navigator.platform || 'Unknown Device'
         };
 
-        // Add transports if available
         if (credential.response.getTransports) {
             credentialData.response.transports = credential.response.getTransports();
         }
 
-        // Step 3: Send credential to server
         const completeRes = await fetch(`${API_BASE}/webauthn/register/complete`, {
             method: 'POST',
             headers: {
@@ -1217,11 +1186,10 @@ async function registerPasskeyRequired() {
         if (completeData.success) {
             showToast('Passkey đã được thiết lập! 🔑', 'success');
             return true;
-        } else {
-            showToast(completeData.message, 'error');
-            return false;
         }
 
+        showToast(completeData.message, 'error');
+        return false;
     } catch (err) {
         if (err.name === 'NotAllowedError') {
             showToast('Đăng ký Passkey bị hủy', 'error');
@@ -1233,9 +1201,6 @@ async function registerPasskeyRequired() {
     }
 }
 
-/**
- * Register a new Passkey for the current user
- */
 async function registerPasskey() {
     if (!isWebAuthnSupported()) {
         showToast('Trình duyệt không hỗ trợ Passkey', 'error');
@@ -1250,7 +1215,6 @@ async function registerPasskey() {
     try {
         showToast('Đang khởi tạo đăng ký Passkey...', 'info');
 
-        // Step 1: Get registration options from server
         const beginRes = await fetch(`${API_BASE}/webauthn/register/begin`, {
             method: 'POST',
             headers: {
@@ -1265,10 +1229,7 @@ async function registerPasskey() {
             return;
         }
 
-        // Parse the options
         const options = JSON.parse(beginData.data);
-
-        // Convert base64url fields to ArrayBuffer
         options.challenge = base64urlToBuffer(options.challenge);
         options.user.id = base64urlToBuffer(options.user.id);
 
@@ -1279,12 +1240,10 @@ async function registerPasskey() {
             }));
         }
 
-        // Step 2: Create credential using WebAuthn API
         const credential = await navigator.credentials.create({
             publicKey: options
         });
 
-        // Convert credential to JSON-serializable format
         const credentialData = {
             id: credential.id,
             rawId: bufferToBase64url(credential.rawId),
@@ -1296,12 +1255,10 @@ async function registerPasskey() {
             device_name: navigator.platform || 'Unknown Device'
         };
 
-        // Add transports if available
         if (credential.response.getTransports) {
             credentialData.response.transports = credential.response.getTransports();
         }
 
-        // Step 3: Send credential to server
         const completeRes = await fetch(`${API_BASE}/webauthn/register/complete`, {
             method: 'POST',
             headers: {
@@ -1318,7 +1275,6 @@ async function registerPasskey() {
         } else {
             showToast(completeData.message, 'error');
         }
-
     } catch (err) {
         if (err.name === 'NotAllowedError') {
             showToast('Đăng ký bị hủy hoặc hết thời gian', 'error');
@@ -1329,9 +1285,6 @@ async function registerPasskey() {
     }
 }
 
-/**
- * Login using Passkey
- */
 async function loginWithPasskey() {
     if (!isWebAuthnSupported()) {
         showToast('Trình duyệt không hỗ trợ Passkey', 'error');
@@ -1339,12 +1292,10 @@ async function loginWithPasskey() {
     }
 
     try {
-        // Get username if provided
         const username = document.getElementById('username')?.value || '';
 
         showToast('Đang khởi tạo đăng nhập Passkey...', 'info');
 
-        // Step 1: Get authentication options from server
         const beginRes = await fetch(`${API_BASE}/webauthn/login/begin`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1357,11 +1308,8 @@ async function loginWithPasskey() {
             return;
         }
 
-        // Parse the options
         const options = JSON.parse(beginData.data);
         const sessionKey = beginData.session_key;
-
-        // Convert base64url fields to ArrayBuffer
         options.challenge = base64urlToBuffer(options.challenge);
 
         if (options.allowCredentials) {
@@ -1371,12 +1319,10 @@ async function loginWithPasskey() {
             }));
         }
 
-        // Step 2: Get credential using WebAuthn API
         const assertion = await navigator.credentials.get({
             publicKey: options
         });
 
-        // Convert assertion to JSON-serializable format
         const assertionData = {
             id: assertion.id,
             rawId: bufferToBase64url(assertion.rawId),
@@ -1389,12 +1335,10 @@ async function loginWithPasskey() {
             session_key: sessionKey
         };
 
-        // Add userHandle if available
         if (assertion.response.userHandle) {
             assertionData.response.userHandle = bufferToBase64url(assertion.response.userHandle);
         }
 
-        // Step 3: Send assertion to server
         const completeRes = await fetch(`${API_BASE}/webauthn/login/complete`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1411,7 +1355,6 @@ async function loginWithPasskey() {
         } else {
             showToast(completeData.message, 'error');
         }
-
     } catch (err) {
         if (err.name === 'NotAllowedError') {
             showToast('Đăng nhập bị hủy hoặc hết thời gian', 'error');
@@ -1422,9 +1365,6 @@ async function loginWithPasskey() {
     }
 }
 
-/**
- * Manage Passkey (register new or remove existing)
- */
 async function managePasskey() {
     if (!token) {
         showToast('Vui lòng đăng nhập trước', 'error');
@@ -1443,7 +1383,6 @@ async function managePasskey() {
         }
 
         if (data.data.has_passkey) {
-            // User already has passkey - show info and ask if they want to remove
             const deviceName = data.data.device_name || 'Unknown';
             const createdAt = data.data.created_at ? new Date(data.data.created_at).toLocaleDateString('vi-VN') : 'Unknown';
             const lastUsed = data.data.last_used_at ? new Date(data.data.last_used_at).toLocaleString('vi-VN') : 'Chưa sử dụng';
@@ -1458,7 +1397,6 @@ async function managePasskey() {
             );
 
             if (confirmRemove) {
-                // Ask for password to confirm removal
                 const password = prompt('Nhập mật khẩu để xác nhận xóa Passkey:');
 
                 if (!password) {
@@ -1466,7 +1404,6 @@ async function managePasskey() {
                     return;
                 }
 
-                // Remove passkey with password confirmation
                 const removeRes = await fetch(`${API_BASE}/webauthn/remove`, {
                     method: 'DELETE',
                     headers: {
@@ -1484,25 +1421,14 @@ async function managePasskey() {
                     showToast(removeData.message, 'error');
                 }
             }
-        } else {
-            // No passkey - ask if they want to register
-            if (confirm('Bạn chưa có Passkey.\n\nPasskey cho phép đăng nhập nhanh và an toàn mà không cần mật khẩu.\n\n⚠️ LƯU Ý: Nếu bạn bật sync passkey (iCloud Keychain / Google Password Manager), passkey có thể đồng bộ sang thiết bị khác.\n\nBạn có muốn đăng ký Passkey không?')) {
-                registerPasskey();
-            }
+        } else if (confirm('Bạn chưa có Passkey.\n\nBạn có muốn đăng ký Passkey không?')) {
+            registerPasskey();
         }
-
     } catch (err) {
         console.error('Error managing passkey:', err);
         showToast('Lỗi khi quản lý Passkey', 'error');
     }
 }
-
-// Update showApp to check passkey status
-const originalShowApp = showApp;
-showApp = function () {
-    originalShowApp();
-    checkPasskeyStatus();
-};
 
 // Load Device Logs
 async function loadDeviceLogs() {

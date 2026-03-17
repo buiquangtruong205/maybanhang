@@ -19,7 +19,7 @@ def machine_key_required(f):
     Decorator để xác thực thiết bị IoT bằng machine_key
     
     Thiết bị gửi key qua:
-    - Header: X-Machine-Key: may1
+    - Header: X-Machine-Key: maybanhang-v3
     - Hoặc trong body JSON: {"machine_key": "may1", ...}
     - Hoặc query param: ?machine_key=may1
     """

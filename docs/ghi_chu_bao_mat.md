@@ -1,6 +1,6 @@
-# Hướng Dẫn Cấu Hình Bảo Mật Hệ Thống Bán Hàng
+# Ghi Chú Bảo Mật Hệ Thống Bán Hàng
 
-Tài liệu này ghi chú lại các cấu hình bảo mật đã được áp dụng cho dự án Máy Bán Hàng, bao gồm việc tăng cường bảo mật cho đường truyền (Nginx Proxy) và giới hạn quyền truy cập qua cấu hình CORS (Cross-Origin Resource Sharing) trên Backend Flask (gồm API và WebSockets).
+Tài liệu này ghi chú các cấu hình bảo mật hiện có trong dự án, tập trung vào Nginx, CORS và WebSocket.
 
 ## 1. Cấu hình Nginx (Security Headers)
 

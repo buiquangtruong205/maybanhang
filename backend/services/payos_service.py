@@ -3,12 +3,13 @@ Dịch vụ PayOS - xử lý logic tạo link thanh toán (không dùng thư vi�
 """
 import hmac
 import hashlib
-import json
+import secrets
 import requests
 from app.config import PAYOS_CLIENT_ID, PAYOS_API_KEY, PAYOS_CHECKSUM_KEY, DOMAIN
 
 # API endpoint PayOS
 PAYOS_API_URL = "https://api-merchant.payos.vn/v2"
+PAYOS_TIMEOUT = 15
 
 # Kiểm tra cấu hình PayOS
 print(f"[PayOS] ID: {PAYOS_CLIENT_ID[:5] if PAYOS_CLIENT_ID else 'None'}... API: {PAYOS_API_KEY[:5] if PAYOS_API_KEY else 'None'}...")
@@ -29,7 +30,11 @@ def _create_signature(data_to_sign: dict) -> str:
         Signature hex string
     """
     # Sắp xếp theo alphabet và tạo chuỗi: key1=value1&key2=value2...
-    sorted_data = sorted(data_to_sign.items())
+    sorted_data = sorted(
+        (key, value)
+        for key, value in data_to_sign.items()
+        if value is not None and key != "signature"
+    )
     sign_str = "&".join([f"{k}={v}" for k, v in sorted_data])
     
     # Tạo chữ ký HMAC_SHA256
@@ -40,6 +45,45 @@ def _create_signature(data_to_sign: dict) -> str:
     ).hexdigest()
     
     return signature
+
+
+def _payos_headers() -> dict:
+    return {
+        "x-client-id": PAYOS_CLIENT_ID,
+        "x-api-key": PAYOS_API_KEY,
+        "Content-Type": "application/json"
+    }
+
+
+def _request_payos(method: str, path: str, json_body=None) -> dict:
+    url = f"{PAYOS_API_URL}{path}"
+
+    try:
+        response = requests.request(
+            method=method,
+            url=url,
+            headers=_payos_headers(),
+            json=json_body,
+            timeout=PAYOS_TIMEOUT
+        )
+    except requests.Timeout:
+        return {"success": False, "error": "Yêu cầu tới PayOS bị quá thời gian chờ"}
+    except requests.RequestException as exc:
+        return {"success": False, "error": f"Yêu cầu tới PayOS thất bại: {exc}"}
+
+    try:
+        resp_data = response.json()
+    except ValueError:
+        return {
+            "success": False,
+            "error": f"PayOS trả về dữ liệu không phải JSON với HTTP {response.status_code}"
+        }
+
+    if response.ok:
+        return {"success": True, "data": resp_data}
+
+    error_msg = resp_data.get("desc") or resp_data.get("message") or f"HTTP {response.status_code}"
+    return {"success": False, "error": error_msg, "data": resp_data}
 
 
 def create_payment_link(
@@ -70,16 +114,14 @@ def create_payment_link(
         dict với checkout_url, qr_code hoặc error
     """
     if not PAYOS_CLIENT_ID or not PAYOS_API_KEY or not PAYOS_CHECKSUM_KEY:
-        return {"success": False, "error": "PayOS not configured. Check credentials in .env file"}
+        return {"success": False, "error": "PayOS chưa được cấu hình. Hãy kiểm tra biến môi trường trong .env"}
     
     try:
-        import time
-        
-        # Tạo unique payment_code bằng cách kết hợp order_id với timestamp
-        # Format: order_id * 10000 + random suffix (để tránh trùng khi tạo nhiều lần)
-        # VD: order_id=3 -> payment_code = 30000 + (seconds % 9999) = 30001, 30002, ...
-        timestamp_suffix = int(time.time()) % 9999 + 1  # 1-9999
-        unique_payment_code = order_code * 10000 + timestamp_suffix
+        # Tạo unique payment_code bằng cách kết hợp order_id với suffix ngẫu nhiên 4 chữ số.
+        # Format: order_id * 10000 + suffix
+        # suffix luôn nằm trong khoảng 1..9999 để vẫn parse lại được order_id bằng // 10000.
+        random_suffix = secrets.randbelow(9999) + 1
+        unique_payment_code = order_code * 10000 + random_suffix
         
         print(f"🔢 Generated unique payment_code: {unique_payment_code} (from order_id: {order_code})")
         
@@ -117,18 +159,15 @@ def create_payment_link(
         if buyer_address:
             payload["buyerAddress"] = buyer_address
         
-        headers = {
-            "x-client-id": PAYOS_CLIENT_ID,
-            "x-api-key": PAYOS_API_KEY,
-            "Content-Type": "application/json"
-        }
-        
         print(f"📤 Creating payment: payment_code={unique_payment_code}, order_id={order_code}, amount={amount}")
         
         # 4. Gửi request
-        url = f"{PAYOS_API_URL}/payment-requests"
-        response = requests.post(url, headers=headers, json=payload)
-        resp_data = response.json()
+        response = _request_payos("POST", "/payment-requests", json_body=payload)
+        if not response.get("success"):
+            print(f"❌ PayOS error: {response['error']}")
+            return {"success": False, "error": f"Lỗi PayOS: {response['error']}"}
+
+        resp_data = response["data"]
         
         print(f"📥 PayOS response: {resp_data}")
         
@@ -146,15 +185,15 @@ def create_payment_link(
                 "payment_code": unique_payment_code  # Trả về payment_code để tracking
             }
         else:
-            error_msg = resp_data.get("desc") or resp_data.get("message") or "Unknown error"
+            error_msg = resp_data.get("desc") or resp_data.get("message") or "Lỗi không xác định"
             print(f"❌ PayOS error: {error_msg}")
-            return {"success": False, "error": f"PayOS Error: {error_msg}"}
+            return {"success": False, "error": f"Lỗi PayOS: {error_msg}"}
     
     except Exception as e:
         import traceback
         print(f"❌ LỖI PayOS API: {str(e)}")
         traceback.print_exc()
-        return {"success": False, "error": f"PayOS Error: {str(e)}"}
+        return {"success": False, "error": f"Lỗi PayOS: {str(e)}"}
 
 
 def get_payment_status(order_code: int) -> dict:
@@ -168,18 +207,14 @@ def get_payment_status(order_code: int) -> dict:
         dict với thông tin trạng thái thanh toán
     """
     if not PAYOS_CLIENT_ID or not PAYOS_API_KEY or not PAYOS_CHECKSUM_KEY:
-        return {"success": False, "error": "PayOS not configured"}
+        return {"success": False, "error": "PayOS chưa được cấu hình"}
     
     try:
-        url = f"{PAYOS_API_URL}/payment-requests/{order_code}"
-        headers = {
-            "x-client-id": PAYOS_CLIENT_ID,
-            "x-api-key": PAYOS_API_KEY,
-            "Content-Type": "application/json"
-        }
-        
-        response = requests.get(url, headers=headers)
-        resp_data = response.json()
+        response = _request_payos("GET", f"/payment-requests/{order_code}")
+        if not response.get("success"):
+            return {"success": False, "error": response["error"]}
+
+        resp_data = response["data"]
         
         print(f"📊 Payment status response: {resp_data}")
         
@@ -203,7 +238,7 @@ def get_payment_status(order_code: int) -> dict:
                 "transactions": transactions
             }
         else:
-            error_msg = resp_data.get("desc") or resp_data.get("message") or "Unknown error"
+            error_msg = resp_data.get("desc") or resp_data.get("message") or "Lỗi không xác định"
             return {"success": False, "error": error_msg}
         
     except Exception as e:
@@ -222,25 +257,21 @@ def cancel_payment(order_code: int) -> dict:
         dict kết quả hủy
     """
     if not PAYOS_CLIENT_ID or not PAYOS_API_KEY or not PAYOS_CHECKSUM_KEY:
-        return {"success": False, "error": "PayOS not configured"}
+        return {"success": False, "error": "PayOS chưa được cấu hình"}
     
     try:
-        url = f"{PAYOS_API_URL}/payment-requests/{order_code}/cancel"
-        headers = {
-            "x-client-id": PAYOS_CLIENT_ID,
-            "x-api-key": PAYOS_API_KEY,
-            "Content-Type": "application/json"
-        }
-        
-        response = requests.post(url, headers=headers)
-        resp_data = response.json()
+        response = _request_payos("POST", f"/payment-requests/{order_code}/cancel")
+        if not response.get("success"):
+            return {"success": False, "error": response["error"]}
+
+        resp_data = response["data"]
         
         print(f"🚫 Cancel payment response: {resp_data}")
         
         if resp_data.get("code") == "00":
-            return {"success": True, "message": "Payment cancelled"}
+            return {"success": True, "message": "Đã hủy thanh toán"}
         else:
-            error_msg = resp_data.get("desc") or resp_data.get("message") or "Unknown error"
+            error_msg = resp_data.get("desc") or resp_data.get("message") or "Lỗi không xác định"
             return {"success": False, "error": error_msg}
         
     except Exception as e:
@@ -264,14 +295,12 @@ def verify_webhook_signature(payload: dict, signature: str) -> bool:
         return True  # Skip verification if no key
     
     try:
-        # Tạo chuỗi để verify (theo tài liệu PayOS)
-        data_to_sign = json.dumps(payload.get("data", {}), separators=(',', ':'), ensure_ascii=False)
-        
-        expected_signature = hmac.new(
-            PAYOS_CHECKSUM_KEY.encode('utf-8'),
-            data_to_sign.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
+        webhook_data = payload.get("data", {})
+        if not isinstance(webhook_data, dict):
+            print("⚠️ Webhook payload data is not a dict")
+            return False
+
+        expected_signature = _create_signature(webhook_data)
         
         is_valid = hmac.compare_digest(expected_signature, signature)
         

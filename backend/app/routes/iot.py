@@ -23,7 +23,7 @@ def machine_ping(machine_id):
     Ping từ máy bán hàng để báo còn hoạt động
     
     Request:
-        Header: X-Machine-Key: may1
+        Header: X-Machine-Key: maybanhang-v3
         Body (optional): {"status": "online", "temperature": 25.5}
     
     Response:
@@ -48,7 +48,7 @@ def frontend_heartbeat(machine_id):
     Heartbeat từ giao diện web (frontend) để đảm bảo chỉ 1 thiết bị truy cập tại 1 thời điểm.
     
     Request:
-        Header: X-Machine-Key: may1
+        Header: X-Machine-Key: maybanhang-v3
         Body: {"session_id": "abc-123"}
     
     Response:
@@ -105,7 +105,7 @@ def dispense_complete(machine_id):
     Báo hoàn thành xuất hàng từ máy bán hàng
     
     Request:
-        Header: X-Machine-Key: may1
+        Header: X-Machine-Key: maybanhang-v3
         Body: {
             "order_id": 123,
             "slot_code": "A1",
@@ -172,7 +172,7 @@ def get_pending_orders(machine_id):
     Lấy danh sách đơn hàng đang chờ xuất cho máy này
     
     Request:
-        Header: X-Machine-Key: may1
+        Header: X-Machine-Key: maybanhang-v3
     
     Response:
         {

@@ -1,4 +1,4 @@
-# 📊 Cấu trúc Database - Máy Bán Hàng Tự Động
+# Cấu Trúc Cơ Sở Dữ Liệu - Máy Bán Hàng Tự Động
 
 > **File nguồn:** `backend/app/models/database.py`
 
@@ -6,7 +6,7 @@
 
 ## Tổng quan
 
-Database gồm **12 bảng** được chia thành các nhóm chức năng:
+Database hiện gồm các bảng chính được chia thành các nhóm chức năng:
 
 | Nhóm | Số bảng | Bảng |
 |------|---------|------|
@@ -113,15 +113,15 @@ Các ngăn/khe trong máy bán hàng.
 
 **Giá trị `status_payment`:**
 - `pending` - Chờ thanh toán
-- `paid` - Đã thanh toán
-- `failed` - Thanh toán thất bại
-- `refunded` - Đã hoàn tiền
+- `completed` - Đã thanh toán thành công
+- `cancelled` - Đã hủy
 
 **Giá trị `status_slots`:**
 - `pending` - Chờ xuất hàng
-- `dispensing` - Đang xuất
 - `dispensed` - Đã xuất xong
 - `failed` - Xuất hàng thất bại
+- `completed` - Hoàn tất theo luồng cũ
+- `cancelled` - Đã hủy
 
 ---
 
@@ -140,6 +140,10 @@ Giao dịch thanh toán.
 | `sender_bank` | String(50) | NULLABLE | Ngân hàng người gửi |
 | `status` | String(50) | DEFAULT 'pending', INDEX | Trạng thái |
 | `created_at` | DateTime | DEFAULT NOW(), INDEX | Thời điểm tạo |
+
+**Giá trị thực tế đang dùng trong code:**
+- `pending`
+- `success`
 
 ---
 
