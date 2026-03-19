@@ -3,10 +3,12 @@ IoT Machine Routes - API endpoints for ESP/Arduino vending machines
 """
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+import os
 import time
 from app import db
-from app.models import Machine, Order, Slot, Product
-from app.utils import machine_key_required
+from app.models import Machine, Order, Slot, Product, DeviceLog, allocate_bigint_pk
+from app.utils.machine_auth import multi_auth_required, machine_key_required
+from app.websocket import emit_stock_update, emit_machine_status_update, emit_admin_log, emit_admin_machine_status
 
 iot_bp = Blueprint('iot', __name__)
 
@@ -14,6 +16,78 @@ iot_bp = Blueprint('iot', __name__)
 # Format: {machine_id: {'session_id': 'xyz', 'last_seen': 1234567.89}}
 FRONTEND_SESSIONS = {}
 FRONTEND_SESSION_TIMEOUT = 5.0  # seconds
+
+
+def _get_order_for_machine(order_id, machine_id):
+    order = Order.query.get(order_id)
+    if not order:
+        return None, (
+            jsonify({
+                'success': False,
+                'message': 'Order not found'
+            }),
+            404
+        )
+
+    if machine_id is None:
+        return order, None
+
+    slot = order.slot
+    if not slot or slot.machine_id != machine_id:
+        return None, (
+            jsonify({
+                'success': False,
+                'message': 'Order does not belong to this machine'
+            }),
+            403
+        )
+
+    return order, None
+
+
+def _resolve_public_mqtt_broker():
+    broker = os.environ.get('PUBLIC_MQTT_BROKER')
+    if broker:
+        return broker.strip()
+
+    host = request.host.split(':', 1)[0].strip()
+    return host or 'localhost'
+
+
+def _resolve_public_mqtt_port():
+    try:
+        return int(os.environ.get('PUBLIC_MQTT_PORT', '1883'))
+    except (TypeError, ValueError):
+        return 1883
+
+
+def _build_device_config(machine):
+    broker = _resolve_public_mqtt_broker()
+    port = _resolve_public_mqtt_port()
+    command_topic = (machine.mqtt_command_topic or '').strip() or f'vending/v3/machine/{machine.machine_id}/cmd'
+    status_topic = (machine.mqtt_status_topic or '').strip() or f'vending/v3/machine/{machine.machine_id}/status'
+    broadcast_status_topic = (machine.mqtt_broadcast_status_topic or '').strip() or 'vending/v3/status'
+
+    return {
+        'machine_id': str(machine.machine_id),
+        'machine_name': machine.name,
+        'machine_key': machine.secret_key,
+        'location': machine.location,
+        'mqtt': {
+            'broker': broker,
+            'port': port,
+            'topics': {
+                'command': command_topic,
+                'status': status_topic,
+                'broadcast_status': broadcast_status_topic
+            }
+        },
+        'ui': {
+            'layout': machine.ui_layout or {}
+        },
+        'device_profile': machine.device_profile or {},
+        'admin_notes': machine.config_notes
+    }
 
 
 @iot_bp.route('/iot/ping', methods=['POST'])
@@ -42,7 +116,7 @@ def machine_ping(machine_id):
 
 
 @iot_bp.route('/iot/frontend-heartbeat', methods=['POST'])
-@machine_key_required
+@multi_auth_required
 def frontend_heartbeat(machine_id):
     """
     Heartbeat từ giao diện web (frontend) để đảm bảo chỉ 1 thiết bị truy cập tại 1 thời điểm.
@@ -134,12 +208,9 @@ def dispense_complete(machine_id):
             }), 400
         
         # Update order status
-        order = Order.query.get(order_id)
-        if not order:
-            return jsonify({
-                'success': False,
-                'message': 'Order not found'
-            }), 404
+        order, error_response = _get_order_for_machine(order_id, machine_id)
+        if error_response:
+            return error_response
         
         if dispense_success:
             order.status_slots = 'dispensed'
@@ -166,7 +237,7 @@ def dispense_complete(machine_id):
 
 
 @iot_bp.route('/iot/pending-orders', methods=['GET'])
-@machine_key_required
+@multi_auth_required
 def get_pending_orders(machine_id):
     """
     Lấy danh sách đơn hàng đang chờ xuất cho máy này
@@ -183,20 +254,28 @@ def get_pending_orders(machine_id):
         }
     """
     try:
-        # Get slots belonging to this machine
-        slots = Slot.query.filter_by(machine_id=machine_id).all()
-        slot_ids = [s.slot_id for s in slots]
-        
-        # Get orders with status_payment=completed but status_slots=pending
-        orders = Order.query.filter(
-            Order.slot_id.in_(slot_ids) if slot_ids else False,
-            Order.status_payment == 'completed',
-            Order.status_slots == 'pending'
-        ).all()
+        # Join trực tiếp qua Slot để tránh bỏ sót order hợp lệ do bước lấy slot_ids riêng.
+        orders = (
+            Order.query
+            .join(Slot, Order.slot_id == Slot.slot_id)
+            .filter(
+                Slot.machine_id == machine_id,
+                Order.status_payment == 'completed',
+                Order.status_slots == 'pending'
+            )
+            .order_by(Order.created_at.asc())
+            .all()
+        )
+
+        print(
+            f"📥 Pending orders for machine {machine_id}: "
+            f"{[(o.order_id, o.slot_id, o.status_payment, o.status_slots) for o in orders]}"
+        )
         
         order_list = [{
             'order_id': o.order_id,
             'slot_id': o.slot_id,
+            'slot_code': o.slot.slot_code if o.slot else None,
             'product_id': o.product_id,
             'price': float(o.price_snapshot),
             'created_at': o.created_at.isoformat() if o.created_at else None
@@ -260,6 +339,13 @@ def update_stock(machine_id):
         slot.stock = new_stock
         db.session.commit()
         
+        # Real-time update
+        emit_stock_update(machine_id, {
+            'slot_code': slot_code,
+            'new_stock': new_stock,
+            'product_id': slot.product_id
+        })
+        
         print(f"📦 Stock update from machine {machine_id}: slot={slot_code}, {old_stock} -> {new_stock}")
         
         return jsonify({
@@ -278,7 +364,7 @@ def update_stock(machine_id):
 
 
 @iot_bp.route('/iot/create-order', methods=['POST'])
-@machine_key_required
+@multi_auth_required
 def create_order_from_machine(machine_id):
     """
     ESP tạo đơn hàng khi khách mua hàng tại máy
@@ -442,7 +528,7 @@ def create_order_from_machine(machine_id):
 
 
 @iot_bp.route('/iot/check-payment/<int:order_id>', methods=['GET'])
-@machine_key_required
+@multi_auth_required
 def check_order_payment(machine_id, order_id):
     """
     ESP kiểm tra trạng thái thanh toán của đơn hàng
@@ -463,12 +549,9 @@ def check_order_payment(machine_id, order_id):
         }
     """
     try:
-        order = Order.query.get(order_id)
-        if not order:
-            return jsonify({
-                'success': False,
-                'message': 'Order not found'
-            }), 404
+        order, error_response = _get_order_for_machine(order_id, machine_id)
+        if error_response:
+            return error_response
         
         is_paid = order.status_payment == 'completed'
         return jsonify({
@@ -520,6 +603,7 @@ def upload_device_logs(machine_id):
             }), 400
             
         new_log = DeviceLog(
+            log_id=allocate_bigint_pk(DeviceLog, DeviceLog.log_id),
             machine_id=machine_id,
             level=level,
             message=message,
@@ -528,6 +612,15 @@ def upload_device_logs(machine_id):
         
         db.session.add(new_log)
         db.session.commit()
+        
+        # Real-time log to Admin
+        emit_admin_log({
+            'machine_id': machine_id,
+            'level': level,
+            'message': message,
+            'data': data,
+            'timestamp': datetime.utcnow().isoformat()
+        })
         
         print(f"📝 Device Log [{level}] from machine {machine_id}: {message}")
         
@@ -574,18 +667,23 @@ def register_device(machine_id):
         mac_address = json_data.get('mac_address')
         fingerprint = json_data.get('fingerprint')
         firmware_version = json_data.get('firmware_version', '1.0.0')
+        rssi = json_data.get('wifi_rssi')
+        wifi_ssid = json_data.get('wifi_ssid')
+        uptime = json_data.get('uptime', 0)
         
-        # Check if machine exists, create if not
+        if not machine_id:
+            return jsonify({
+                'success': False,
+                'message': 'machine_id is required when using the master registration key'
+            }), 400
+
+        # Check if machine exists
         machine = Machine.query.get(machine_id)
         if not machine:
-            machine = Machine(
-                machine_id=machine_id,
-                name=f'Machine {machine_id}',
-                location='Auto-registered',
-                status='online'
-            )
-            db.session.add(machine)
-            db.session.flush()
+            return jsonify({
+                'success': False,
+                'message': f'Machine {machine_id} not found. Create the machine first.'
+            }), 404
         
         # Update machine status
         machine.status = 'online'
@@ -597,6 +695,9 @@ def register_device(machine_id):
             # Update existing
             identity.mac_address = mac_address
             identity.cert_fingerprint = fingerprint
+            identity.rssi = rssi
+            identity.wifi_ssid = wifi_ssid
+            identity.uptime = uptime
             identity.status = 'active'
             print(f"🔄 Device {machine_id} updated identity: MAC={mac_address}")
         else:
@@ -605,6 +706,9 @@ def register_device(machine_id):
                 machine_id=machine_id,
                 mac_address=mac_address,
                 cert_fingerprint=fingerprint,
+                rssi=rssi,
+                wifi_ssid=wifi_ssid,
+                uptime=uptime,
                 device_public_key=hashlib.sha256(f"{machine_id}-{mac_address}".encode()).hexdigest()[:64],
                 status='active'
             )
@@ -618,8 +722,10 @@ def register_device(machine_id):
             'message': 'Device registered successfully',
             'data': {
                 'machine_id': machine_id,
+                'machine_name': machine.name,
                 'mac_address': mac_address,
-                'status': 'active'
+                'status': 'active',
+                'config': _build_device_config(machine)
             }
         }), 201
         
@@ -657,6 +763,15 @@ def device_heartbeat(machine_id):
         uptime = json_data.get('uptime', 0)
         free_memory = json_data.get('free_memory', 0)
         wifi_rssi = json_data.get('wifi_rssi', 0)
+        wifi_ssid = json_data.get('wifi_ssid')
+        
+        # Update device identity health info
+        identity = DeviceIdentity.query.get(machine_id)
+        if identity:
+            identity.rssi = wifi_rssi
+            identity.wifi_ssid = wifi_ssid
+            identity.uptime = uptime
+            db.session.flush()
         
         # Find or create session
         # Look for an active session for this machine
@@ -682,6 +797,14 @@ def device_heartbeat(machine_id):
         
         db.session.commit()
         
+        # Real-time update for Admin
+        emit_admin_machine_status(machine_id, {
+            'status': 'online',
+            'last_seen': datetime.utcnow().isoformat(),
+            'wifi_rssi': wifi_rssi,
+            'uptime': uptime
+        })
+        
         print(f"💓 Heartbeat from machine {machine_id}: uptime={uptime}s, mem={free_memory}, rssi={wifi_rssi}")
         
         return jsonify({
@@ -690,7 +813,8 @@ def device_heartbeat(machine_id):
             'data': {
                 'machine_id': machine_id,
                 'session_id': session.session_id,
-                'server_time': datetime.utcnow().isoformat()
+                'server_time': datetime.utcnow().isoformat(),
+                'config': _build_device_config(Machine.query.get(machine_id))
             }
         })
         
@@ -700,290 +824,3 @@ def device_heartbeat(machine_id):
             'success': False,
             'message': f'Error: {str(e)}'
         }), 500
-
-
-# ===========================
-# Cash Payment (Tiền mặt)
-# ===========================
-
-# Mệnh giá hợp lệ (VNĐ)
-VALID_DENOMINATIONS = {1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000}
-
-
-@iot_bp.route('/iot/cash-insert', methods=['POST'])
-@machine_key_required
-def cash_insert(machine_id):
-    """
-    Arduino báo nhận được tờ tiền (sau khi cảm biến nhận diện mệnh giá).
-
-    Request:
-        Header: X-Machine-Key: may1
-        Body: {
-            "order_id": 123,
-            "denomination": 50000      # mệnh giá tờ tiền (VNĐ)
-        }
-
-    Response (chưa đủ tiền):
-        {
-            "success": true,
-            "paid": false,
-            "total_inserted": 50000,
-            "price": 75000,
-            "remaining": 25000,
-            "change": 0
-        }
-
-    Response (đã đủ tiền):
-        {
-            "success": true,
-            "paid": true,
-            "total_inserted": 100000,
-            "price": 75000,
-            "remaining": 0,
-            "change": 25000
-        }
-    """
-    from app.models import CashDeposit, Transaction, Slot
-    from app.websocket import emit_payment_success
-    from sqlalchemy import func
-
-    try:
-        json_data = request.get_json(force=True, silent=True)
-        if not json_data:
-            return jsonify({'success': False, 'message': 'Request body must be valid JSON'}), 400
-
-        order_id = json_data.get('order_id')
-        denomination = json_data.get('denomination')
-
-        # --- Validation ---
-        if not order_id:
-            return jsonify({'success': False, 'message': 'order_id is required'}), 400
-
-        if denomination is None:
-            return jsonify({'success': False, 'message': 'denomination is required'}), 400
-
-        denomination = int(denomination)
-        if denomination not in VALID_DENOMINATIONS:
-            return jsonify({
-                'success': False,
-                'message': f'Invalid denomination: {denomination}. Valid values: {sorted(VALID_DENOMINATIONS)}'
-            }), 400
-
-        # --- Kiểm tra đơn hàng ---
-        order = Order.query.get(order_id)
-        if not order:
-            return jsonify({'success': False, 'message': f'Order #{order_id} not found'}), 404
-
-        if order.status_payment == 'completed':
-            return jsonify({
-                'success': False,
-                'message': f'Order #{order_id} is already paid'
-            }), 400
-
-        if order.status_payment == 'cancelled':
-            return jsonify({
-                'success': False,
-                'message': f'Order #{order_id} is cancelled'
-            }), 400
-
-        # --- Kiểm tra máy này sở hữu đơn hàng ---
-        if order.slot_id:
-            slot = Slot.query.get(order.slot_id)
-            if slot and slot.machine_id != machine_id:
-                return jsonify({
-                    'success': False,
-                    'message': f'Order #{order_id} does not belong to this machine'
-                }), 403
-
-        # --- Ghi nhận tờ tiền vừa nhét ---
-        deposit = CashDeposit(
-            order_id=order_id,
-            machine_id=machine_id,
-            denomination=denomination,
-            change=0
-        )
-        db.session.add(deposit)
-        db.session.flush()  # flush để có deposit_id, chưa commit
-
-        # --- Tính tổng tiền đã nhét ---
-        total_inserted = db.session.query(
-            func.sum(CashDeposit.denomination)
-        ).filter(CashDeposit.order_id == order_id).scalar() or 0
-
-        price = float(order.price_snapshot)
-        remaining = max(0, price - total_inserted)
-        change = max(0, total_inserted - price)
-        is_paid = total_inserted >= price
-
-        print(f"💵 Cash insert: machine={machine_id}, order={order_id}, "
-              f"denomination={denomination}, total={total_inserted}, price={price}, "
-              f"remaining={remaining}, change={change}")
-
-        if is_paid:
-            # --- Đủ tiền: cập nhật order, trừ giá sản phẩm, ghi tiền thừa ---
-            # status_slots giữ 'pending' → Arduino poll /iot/pending-orders rồi nhả hàng
-            # Sau khi nhả xong, Arduino gọi /iot/dispense-complete → 'dispensed'
-            order.status_payment = 'completed'
-            order.status_slots = 'pending'
-
-            # Ghi lại tiền thừa tại bản ghi vừa tạo
-            deposit.change = int(change)
-
-            # Giảm stock trong slot 
-            if order.slot_id:
-                slot = Slot.query.get(order.slot_id)
-                if slot:
-                    qty = getattr(order, 'quantity', 1)
-                    if slot.stock >= qty:
-                        slot.stock -= qty
-                        print(f"📦 Stock reduced for slot {order.slot_id}: {slot.stock + qty} -> {slot.stock}")
-                    else:
-                        slot.stock = 0
-
-                    if slot.stock == 0:
-                        product = Product.query.get(slot.product_id)
-                        # Check total stock across all slots using the property defined in Product model
-                        if product and product.stock == 0:
-                            product.active = False
-                            print(f"⚠️ Product '{product.product_name}' marked INACTIVE (total stock=0)")
-
-            # Tạo Transaction (tiền mặt)
-            existing_tx = Transaction.query.filter_by(order_id=order_id).first()
-            if not existing_tx:
-                transaction = Transaction(
-                    order_id=order_id,
-                    amount=float(price),           # trừ đúng giá sản phẩm
-                    bank_trans_id=None,
-                    description=(
-                        f"Thanh toán tiền mặt đơn #{order_id} "
-                        f"(nhét: {int(total_inserted):,}đ, "
-                        f"giá: {int(price):,}đ, "
-                        f"tiền thừa: {int(change):,}đ)"
-                    ),
-                    status='success'
-                )
-                db.session.add(transaction)
-                print(f"💳 Cash transaction created for order #{order_id}")
-
-            db.session.commit()
-            print(f"✅ Order #{order_id} paid by cash. Change: {change:,}đ")
-
-            # Emit WebSocket để frontend nhận ngay
-            emit_payment_success(order_id, {
-                'amount': price,
-                'payment_method': 'cash',
-                'total_inserted': total_inserted,
-                'change': change
-            })
-
-            return jsonify({
-                'success': True,
-                'paid': True,
-                'message': f'Payment completed! Change: {int(change):,}đ',
-                'data': {
-                    'order_id': order_id,
-                    'total_inserted': int(total_inserted),
-                    'price': int(price),
-                    'remaining': 0,
-                    'change': int(change)
-                }
-            }), 200
-
-        else:
-            # Chưa đủ tiền
-            db.session.commit()
-            return jsonify({
-                'success': True,
-                'paid': False,
-                'message': f'Inserted {int(denomination):,}đ. Still need {int(remaining):,}đ more.',
-                'data': {
-                    'order_id': order_id,
-                    'total_inserted': int(total_inserted),
-                    'price': int(price),
-                    'remaining': int(remaining),
-                    'change': 0
-                }
-            }), 200
-
-    except Exception as e:
-        db.session.rollback()
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
-
-
-@iot_bp.route('/iot/cash-status/<int:order_id>', methods=['GET'])
-@machine_key_required
-def cash_status(machine_id, order_id):
-    """
-    Kiểm tra tổng số tiền đã nhét cho một đơn hàng.
-
-    Request:
-        Header: X-Machine-Key: may1
-        URL: /api/iot/cash-status/123
-
-    Response:
-        {
-            "success": true,
-            "data": {
-                "order_id": 123,
-                "price": 75000,
-                "total_inserted": 50000,
-                "remaining": 25000,
-                "change": 0,
-                "is_paid": false,
-                "status_payment": "pending",
-                "deposits": [
-                    {"denomination": 50000, "inserted_at": "2026-03-04T09:00:00"}
-                ]
-            }
-        }
-    """
-    from app.models import CashDeposit
-    from sqlalchemy import func
-
-    try:
-        order = Order.query.get(order_id)
-        if not order:
-            return jsonify({'success': False, 'message': f'Order #{order_id} not found'}), 404
-
-        # Tổng tiền đã nhét
-        total_inserted = db.session.query(
-            func.sum(CashDeposit.denomination)
-        ).filter(CashDeposit.order_id == order_id).scalar() or 0
-
-        price = float(order.price_snapshot)
-        remaining = max(0, price - total_inserted)
-        change = max(0, total_inserted - price)
-        is_paid = order.status_payment == 'completed'
-
-        # Chi tiết các lần nhét
-        deposits = CashDeposit.query.filter_by(order_id=order_id).order_by(
-            CashDeposit.inserted_at.asc()
-        ).all()
-
-        deposit_list = [{
-            'deposit_id': d.deposit_id,
-            'denomination': d.denomination,
-            'inserted_at': d.inserted_at.isoformat() if d.inserted_at else None
-        } for d in deposits]
-
-        return jsonify({
-            'success': True,
-            'message': 'Cash status retrieved',
-            'data': {
-                'order_id': order_id,
-                'price': int(price),
-                'total_inserted': int(total_inserted),
-                'remaining': int(remaining),
-                'change': int(change),
-                'is_paid': is_paid,
-                'status_payment': order.status_payment,
-                'deposits': deposit_list
-            }
-        })
-
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
-
-

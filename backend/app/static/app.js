@@ -207,6 +207,7 @@ function showApp() {
     document.getElementById('app').style.display = 'block';
     document.getElementById('currentUser').textContent = `👤 ${currentUser?.username || 'User'}`;
     loadAllData();
+    initAdminWebSocket();
 }
 
 // Tab switching
@@ -377,20 +378,45 @@ function renderMachines(machines) {
     const tbody = document.getElementById('machinesTable');
     tbody.innerHTML = machines.map(m => {
         const itemJson = escapeHtml(JSON.stringify(m));
+        const statusClass = m.status === 'active' ? 'active' : (m.status === 'maintenance' ? 'warning' : 'inactive');
+        const wifiClass = m.wifi_status === 'connected' ? 'active' : 'inactive';
+        
         return `
         <tr>
-            <td>${m.machine_id}</td>
+            <td class="id-column">${m.machine_id}</td>
             <td>${m.name}</td>
             <td>${m.location || '-'}</td>
-            <td><span class="status status-${m.status}">${m.status}</span></td>
-            <td><code>${m.secret_key || '-'}</code></td>
-            <td class="actions">
-                <button class="btn btn-edit" onclick='editItem("machine", ${itemJson})'>Sửa</button>
-                <button class="btn btn-delete" onclick="deleteItem('machine', ${m.machine_id})">Xóa</button>
+            <td class="table-align-center"><span class="status status-${wifiClass}">${m.wifi_signal || (m.wifi_status === 'connected' ? 'ON' : 'OFF')}</span></td>
+            <td class="table-align-center"><code>${m.uptime || '-'}</code></td>
+            <td class="table-align-center"><span class="status status-${statusClass}">${m.status}</span></td>
+            <td class="table-align-center">
+                <div class="control-actions">
+                    <button class="btn btn-control btn-unlock" title="Mở khóa" onclick="sendMachineCommand(${m.machine_id}, 'UNLOCK')">🔓</button>
+                    <button class="btn btn-control btn-reboot" title="Reboot" onclick="sendMachineCommand(${m.machine_id}, 'REBOOT')">🔄</button>
+                    <button class="btn btn-control btn-test" title="Test Motor" onclick="sendMachineCommand(${m.machine_id}, 'TEST_MOTOR')">⚙️</button>
+                </div>
+            </td>
+            <td class="table-align-center">
+                <div class="actions">
+                    <button class="btn btn-edit" onclick='editItem("machine", ${itemJson})'>Sửa</button>
+                    <button class="btn btn-delete" onclick="deleteItem('machine', ${m.machine_id})">Xóa</button>
+                </div>
             </td>
         </tr>
     `;
     }).join('');
+}
+
+async function sendMachineCommand(machineId, command) {
+    if (!confirm(`Bạn có chắc muốn gửi lệnh ${command} tới máy #${machineId}?`)) return;
+    
+    showToast(`Đang gửi lệnh ${command}...`, 'info');
+    const result = await apiCall(`/machines/${machineId}/control`, 'POST', { command });
+    if (result.success) {
+        showToast(result.message, 'success');
+    } else {
+        showToast(result.message || 'Lỗi gửi lệnh', 'error');
+    }
 }
 
 function renderProducts(products) {
@@ -400,23 +426,20 @@ function renderProducts(products) {
         const productName = p.product_name || p.name || '';
         return `
         <tr>
-            <td>${p.product_id}</td>
-            <td>${productName}</td>
+            <td class="id-column">${p.product_id}</td>
+            <td class="table-align-center">${productName}</td>
             <td>${formatPrice(p.price)}</td>
-            <td class="product-image-cell">
+            <td class="product-image-cell table-align-center">
                 ${p.image
                 ? `<img src="${p.image}" alt="${escapeHtml(productName)}" class="product-thumbnail" onclick="showImagePreview('${escapeHtml(p.image)}')">`
                 : '<span class="no-image">📷 Chưa có ảnh</span>'
             }
             </td>
-            <td><span class="status status-${p.active}">${p.active ? 'Hoạt động' : 'Ngưng'}</span></td>
-            <td class="actions">
-                <div class="action-menu">
-                    <button class="btn btn-more" onclick="toggleActionMenu(event, 'product-${p.product_id}')">⋯</button>
-                    <div id="menu-product-${p.product_id}" class="action-dropdown">
-                        <button onclick='editItem("product", ${itemJson}); closeAllMenus();'>✏️ Sửa</button>
-                        <button onclick="deleteItem('product', ${p.product_id}); closeAllMenus();">🗑️ Xóa</button>
-                    </div>
+            <td class="table-align-center"><span class="status status-${p.active}">${p.active ? 'Hoạt động' : 'Ngưng'}</span></td>
+            <td class="table-align-center">
+                <div class="actions">
+                    <button class="btn btn-edit" onclick='editItem("product", ${itemJson})'>Sửa</button>
+                    <button class="btn btn-delete" onclick="deleteItem('product', ${p.product_id})">Xóa</button>
                 </div>
             </td>
         </tr>
@@ -433,15 +456,17 @@ function renderSlots(slots) {
         const itemJson = escapeHtml(JSON.stringify(s));
         return `
             <tr>
-                <td>${s.slot_id}</td>
-                <td>${machine?.name || s.machine_id}</td>
-                <td>${s.slot_code}</td>
-                <td>${productName}</td>
-                <td>${s.stock}</td>
-                <td>${s.capacity}</td>
-                <td class="actions">
-                    <button class="btn btn-edit" onclick='editItem("slot", ${itemJson})'>Sửa</button>
-                    <button class="btn btn-delete" onclick="deleteItem('slot', ${s.slot_id})">Xóa</button>
+                <td class="id-column">${s.slot_id}</td>
+                <td class="table-align-center">${machine?.name || s.machine_id}</td>
+                <td class="table-align-center"><code>${s.slot_code}</code></td>
+                <td class="table-align-center">${productName}</td>
+                <td class="table-align-center">${s.stock}</td>
+                <td class="table-align-center">${s.capacity}</td>
+                <td class="table-align-center">
+                    <div class="actions">
+                        <button class="btn btn-edit" onclick='editItem("slot", ${itemJson})'>Sửa</button>
+                        <button class="btn btn-delete" onclick="deleteItem('slot', ${s.slot_id})">Xóa</button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -462,13 +487,13 @@ function renderOrders(orders) {
         const slot = slotsCache.find(s => s.slot_id === o.slot_id);
         return `
             <tr>
-                <td>${o.order_id}</td>
-                <td>${productName}</td>
-                <td>${formatPrice(o.price_snapshot)}</td>
-                <td>${slot?.slot_code || o.slot_id}</td>
-                <td><span class="status status-${o.status_payment}">${o.status_payment}</span></td>
-                <td><span class="status status-${o.status_slots}">${o.status_slots}</span></td>
-                <td>${formatDate(o.created_at)}</td>
+                <td class="id-column">${o.order_id}</td>
+                <td class="table-align-center">${productName}</td>
+                <td class="table-align-center">${formatPrice(o.price_snapshot)}</td>
+                <td class="table-align-center"><code>${slot?.slot_code || o.slot_id}</code></td>
+                <td class="table-align-center"><span class="status status-${o.status_payment}">${o.status_payment}</span></td>
+                <td class="table-align-center"><span class="status status-${o.status_slots}">${o.status_slots}</span></td>
+                <td class="table-align-center">${formatDate(o.created_at)}</td>
             </tr>
         `;
     }).join('');
@@ -478,14 +503,13 @@ function renderTransactions(transactions) {
     const tbody = document.getElementById('transactionsTable');
     tbody.innerHTML = transactions.map(t => `
         <tr>
-            <td>${t.transaction_id}</td>
-            <td>${t.order_id}</td>
-            <td>${formatPrice(t.amount)}</td>
-            <td><code>${t.bank_trans_id || '-'}</code></td>
-            <td>${t.sender_account || '-'}</td>
-            <td>${t.sender_bank || '-'}</td>
+            <td class="id-column">${t.transaction_id}</td>
+            <td class="table-align-center">${t.order_id}</td>
+            <td class="table-align-center">${formatPrice(t.amount)}</td>
+            <td class="table-align-center"><code>${t.bank_trans_id || '-'}</code></td>
+            <td class="table-align-center">${formatDate(t.created_at)}</td>
             <td>${t.description || '-'}</td>
-            <td><span class="status status-${t.status}">${t.status}</span></td>
+            <td class="table-align-center"><span class="status status-${t.status}">${t.status}</span></td>
         </tr>
     `).join('');
 }
@@ -509,13 +533,13 @@ function renderAdminLogs(logs) {
 
         return `
             <tr>
-                <td>${l.log_id}</td>
+                <td class="id-column">${l.log_id}</td>
                 <td>${escapeHtml(userDisplay.toString())}</td>
-                <td><span class="status status-${actionClass}">${escapeHtml(l.action)}</span></td>
+                <td class="table-align-center"><span class="status status-${actionClass}">${escapeHtml(l.action)}</span></td>
                 <td>${escapeHtml(l.detail || '-')}</td>
-                <td>${l.target_type ? escapeHtml(l.target_type) + ' #' + l.target_id : '-'}</td>
-                <td><code>${escapeHtml(l.ip_address || '-')}</code></td>
-                <td>${formatDate(l.created_at)}</td>
+                <td class="table-align-center">${l.target_type ? escapeHtml(l.target_type) + ' #' + l.target_id : '-'}</td>
+                <td class="table-align-center"><code>${escapeHtml(l.ip_address || '-')}</code></td>
+                <td class="table-align-center">${formatDate(l.created_at)}</td>
             </tr>
         `;
     }).join('');
@@ -878,17 +902,25 @@ async function handleFormSubmit(e) {
 }
 
 async function deleteItem(type, id) {
-    if (!confirm('Bạn có chắc muốn xóa?')) return;
+    let confirmMsg = 'Bạn có chắc chắn muốn xóa mục này?';
+    if (type === 'product') {
+        confirmMsg = 'Bạn có chắc chắn muốn ngưng hoạt động sản phẩm này?\n(Lưu ý: Sản phẩm sẽ bị ẩn nhưng lịch sử đơn hàng vẫn được giữ lại)';
+    } else if (type === 'machine') {
+        confirmMsg = 'Bạn có chắc chắn muốn xóa máy này?\n(Toàn bộ khe hàng của máy cũng sẽ bị xóa theo)';
+    }
+
+    if (!confirm(confirmMsg)) return;
 
     const result = await apiCall(`/${type}s/${id}`, 'DELETE');
 
     if (result.success) {
-        showToast('Đã xóa thành công!', 'success');
+        showToast(result.message || 'Thao tác thành công!', 'success');
         loadAllData();
     } else {
         showToast(result.message || 'Có lỗi xảy ra', 'error');
     }
 }
+
 
 // Utilities
 function formatDate(dateStr) {
@@ -1438,33 +1470,150 @@ async function loadDeviceLogs() {
     }
 }
 
-// Render Device Logs
 function renderDeviceLogs(logs) {
     const tbody = document.getElementById('deviceLogsTable');
     if (!tbody) return;
+    tbody.innerHTML = logs.map(l => `
+        <tr>
+            <td class="id-column">${l.log_id}</td>
+            <td class="table-align-center">#${l.machine_id}</td>
+            <td class="table-align-center"><span class="status status-${l.level === 'error' ? 'inactive' : (l.level === 'warning' ? 'warning' : 'active')}">${l.level}</span></td>
+            <td>${escapeHtml(l.message)}</td>
+            <td class="table-align-center"><code>${JSON.stringify(l.data)}</code></td>
+            <td class="table-align-center">${formatDate(l.timestamp)}</td>
+        </tr>
+    `).join('');
+}
 
-    tbody.innerHTML = logs.map(log => {
-        let content = log.message;
-        if (log.data) {
-            content += `<br><small style="color:var(--text-muted); font-family:monospace">${escapeHtml(JSON.stringify(log.data))}</small>`;
-        }
+async function loadDeviceIdentities() {
+    const data = await apiCall('/devices/identity');
+    if (data.success) {
+        renderDeviceIdentity(data.data);
+    }
+}
 
-        let levelClass = 'status-info'; // default
-        if (log.level === 'error') levelClass = 'status-inactive'; // red
-        else if (log.level === 'warning') levelClass = 'status-maintenance'; // orange
-        else if (log.level === 'info') levelClass = 'status-active'; // green
-
+function renderDeviceIdentity(identities) {
+    const tbody = document.getElementById('deviceIdentityTable');
+    if (!tbody) return;
+    tbody.innerHTML = identities.map(i => {
+        const statusClass = i.status === 'active' ? 'active' : 'inactive';
         return `
             <tr>
-                <td>${log.log_id}</td>
-                <td>${log.machine_id}</td>
-                <td><span class="status ${levelClass}">${log.level}</span></td>
-                <td>${content}</td>
-                <td>${log.data ? '✅' : '-'}</td>
-                <td>${formatDate(log.created_at)}</td>
+                <td class="id-column">${i.machine_id}</td>
+                <td class="table-align-center"><code>${i.mac_address || '-'}</code></td>
+                <td class="table-align-center"><code>${i.fingerprint || '-'}</code></td>
+                <td class="table-align-center"><span class="status status-${statusClass}">${i.status}</span></td>
+                <td class="table-align-center">${formatDate(i.issued_at)}</td>
+                <td class="table-align-center">
+                    <div class="actions">
+                        <button class="btn btn-delete btn-sm" onclick="revokeDeviceIdentity(${i.machine_id})">Thu hồi</button>
+                    </div>
+                </td>
             </tr>
         `;
     }).join('');
+}
+
+async function loadDeviceSessions() {
+    const data = await apiCall('/devices/sessions');
+    if (data.success) {
+        renderDeviceSessions(data.data);
+    }
+}
+
+function renderDeviceSessions(sessions) {
+    const tbody = document.getElementById('deviceSessionsTable');
+    if (!tbody) return;
+    tbody.innerHTML = sessions.map(s => {
+        const isExpired = new Date(s.expires_at) < new Date();
+        const statusClass = (s.status === 'active' && !isExpired) ? 'active' : 'inactive';
+        return `
+            <tr>
+                <td class="id-column">${s.session_id.substring(0, 8)}...</td>
+                <td class="table-align-center">#${s.machine_id}</td>
+                <td class="table-align-center"><code>${s.ip_address || '-'}</code></td>
+                <td class="table-align-center">${formatDate(s.issued_at)}</td>
+                <td class="table-align-center">${formatDate(s.expires_at)}</td>
+                <td class="table-align-center"><span class="status status-${statusClass}">${isExpired ? 'Hết hạn' : s.status}</span></td>
+                <td class="table-align-center">
+                    <div class="actions">
+                        <button class="btn btn-delete btn-sm" onclick="revokeSession('${s.session_id}')">Thu hồi</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Global variable for admin socket
+let adminSocket = null;
+
+function initAdminWebSocket() {
+    if (adminSocket) return;
+
+    try {
+        console.log('🔌 Connecting Admin WebSocket...');
+        adminSocket = io('/admin', {
+            transports: ['websocket', 'polling'],
+            reconnection: true
+        });
+
+        adminSocket.on('connect', () => {
+            console.log('✅ Admin WebSocket connected');
+        });
+
+        // 1. Live Device Logs
+        adminSocket.on('admin_log', (data) => {
+            console.log('📝 Real-time Log:', data);
+            // Prepend to logs table if currently on logs tab
+            const tbody = document.getElementById('deviceLogsTable');
+            if (tbody) {
+                const logHtml = `
+                    <tr class="highlight-new">
+                        <td>NEW</td>
+                        <td>${data.machine_id}</td>
+                        <td><span class="status status-${data.level === 'error' ? 'inactive' : (data.level === 'warning' ? 'maintenance' : 'active')}">${data.level}</span></td>
+                        <td>${escapeHtml(data.message)}<br><small style="color:var(--text-muted); font-family:monospace">${escapeHtml(JSON.stringify(data.data))}</small></td>
+                        <td>${data.data ? '✅' : '-'}</td>
+                        <td>${formatDate(data.timestamp)}</td>
+                    </tr>
+                `;
+                tbody.insertAdjacentHTML('afterbegin', logHtml);
+                // Keep only top 50
+                if (tbody.children.length > 50) tbody.lastElementChild.remove();
+            }
+            showToast(`Máy #${data.machine_id}: ${data.message}`, data.level === 'error' ? 'error' : 'info');
+        });
+
+        // 2. Live Order Notifications
+        adminSocket.on('admin_order_new', (data) => {
+            console.log('🛒 New Order:', data);
+            showToast(`📦 Đơn hàng mới: ${data.product_name} - ${formatPrice(data.amount)}`, 'success', 10000);
+            
+            // Reload stats and orders
+            loadStats();
+            loadOrders();
+        });
+
+        // 3. Live Machine Status
+        adminSocket.on('admin_machine_status', (data) => {
+            console.log('🖥️ Machine Status:', data);
+            // Update machine in cache and re-render
+            const mIndex = machinesCache.findIndex(m => m.machine_id === data.machine_id);
+            if (mIndex !== -1) {
+                machinesCache[mIndex] = { ...machinesCache[mIndex], ...data };
+                renderMachines(machinesCache);
+            }
+        });
+
+        adminSocket.on('disconnect', () => {
+            console.log('⚠️ Admin WebSocket disconnected');
+            adminSocket = null;
+        });
+
+    } catch (e) {
+        console.error('Error initializing Admin WebSocket:', e);
+    }
 }
 
 // Update loadAllData to include logs
@@ -1472,4 +1621,6 @@ const originalLoadAllData = loadAllData;
 loadAllData = async function () {
     await originalLoadAllData();
     await loadDeviceLogs();
+    await loadDeviceIdentities();
+    await loadDeviceSessions();
 };

@@ -45,7 +45,7 @@ def get_stats(current_user):
         func.count(Transaction.transaction_id).label('transaction_count'),
         func.sum(Transaction.amount).label('total_amount')
     ).filter(
-        Transaction.status == 'completed',
+        Transaction.status.in_(['completed', 'success']),
         Transaction.sender_bank.isnot(None)
     ).group_by(Transaction.sender_bank, Transaction.sender_account)\
     .order_by(desc('transaction_count'))\

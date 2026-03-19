@@ -2,14 +2,47 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime
 from pydantic import ValidationError
 from app import db
-from app.models import DeviceIdentity, DeviceSession
+from app.models import DeviceIdentity, DeviceSession, Machine
 from app.schemas import (
     DeviceIdentityCreate, DeviceIdentityOut,
     DeviceSessionCreate, DeviceSessionOut
 )
 from app.utils import token_required
+from app.utils.mqtt import send_machine_command
 
 device_bp = Blueprint('device', __name__)
+
+@device_bp.route('/devices/<int:machine_id>/action', methods=['POST'])
+@token_required
+def machine_remote_action(current_user, machine_id):
+    try:
+        json_data = request.get_json(force=True, silent=True) or {}
+        action = json_data.get('action', '').upper()
+        data = json_data.get('data', '')
+
+        if action not in ['REBOOT', 'RESET_CONFIG', 'TEST_MOTOR']:
+            return jsonify({
+                'success': False,
+                'message': f'Invalid action: {action}'
+            }), 400
+
+        success = send_machine_command(machine_id, action, data)
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Command {action} sent successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to send MQTT command'
+            }), 500
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        }), 500
 
 
 # ==================== DeviceIdentity ====================
@@ -51,6 +84,12 @@ def create_identity(current_user):
             }), 400
 
         data = DeviceIdentityCreate(**json_data)
+        machine = Machine.query.get(data.machine_id)
+        if not machine:
+            return jsonify({
+                'success': False,
+                'message': f'Machine {data.machine_id} not found. Create the machine first.'
+            }), 404
         
         # Check if identity exists
         identity = DeviceIdentity.query.get(data.machine_id)

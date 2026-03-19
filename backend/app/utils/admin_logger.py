@@ -17,12 +17,13 @@ def log_admin_action(user_id, action, detail=None, target_type=None, target_id=N
         target_id: ID đối tượng bị tác động
     """
     try:
-        from app.models import AdminActivityLog
+        from app.models import AdminActivityLog, allocate_bigint_pk
         from app import db
 
         ip = request.remote_addr if request else None
 
         log_entry = AdminActivityLog(
+            log_id=allocate_bigint_pk(AdminActivityLog, AdminActivityLog.log_id),
             user_id=user_id,
             action=action,
             detail=detail,

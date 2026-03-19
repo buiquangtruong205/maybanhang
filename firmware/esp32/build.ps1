@@ -1,26 +1,29 @@
-$workspaceRoot = "E:\IoT\Du_An\Vending_Machine"
+$ErrorActionPreference = "Stop"
+
+$projectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$firmwareRoot = Split-Path -Parent $projectDir
+$workspaceRoot = Split-Path -Parent $firmwareRoot
 $shortRoot = Join-Path $workspaceRoot "f3"
-$projectTarget = "E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\esp32"
-$sharedTarget = "E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\shared"
-$coreTarget = "E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\.platformio-local"
+$shortProject = Join-Path $shortRoot "esp32"
+$shortShared = Join-Path $shortRoot "shared"
+$coreDir = Join-Path $shortRoot ".platformio-local"
 
-if (-not (Test-Path $shortRoot)) {
-    New-Item -ItemType Directory -Path $shortRoot | Out-Null
-}
-if (-not (Test-Path (Join-Path $shortRoot "esp32"))) {
-    New-Item -ItemType Junction -Path (Join-Path $shortRoot "esp32") -Target $projectTarget | Out-Null
-}
-if (-not (Test-Path (Join-Path $shortRoot "shared"))) {
-    New-Item -ItemType Junction -Path (Join-Path $shortRoot "shared") -Target $sharedTarget | Out-Null
-}
-if (-not (Test-Path (Join-Path $shortRoot ".platformio-local"))) {
-    New-Item -ItemType Junction -Path (Join-Path $shortRoot ".platformio-local") -Target $coreTarget | Out-Null
+New-Item -ItemType Directory -Force -Path $shortRoot | Out-Null
+
+if (-not (Test-Path $shortProject)) {
+    New-Item -ItemType Junction -Path $shortProject -Target $projectDir | Out-Null
 }
 
-$env:PLATFORMIO_CORE_DIR = Join-Path $shortRoot ".platformio-local"
-Push-Location (Join-Path $shortRoot "esp32")
-try {
-    pio run -j 1
-} finally {
-    Pop-Location
+if (-not (Test-Path $shortShared)) {
+    New-Item -ItemType Junction -Path $shortShared -Target (Join-Path $firmwareRoot "shared") | Out-Null
 }
+
+$env:PLATFORMIO_CORE_DIR = $coreDir
+Set-Location $shortProject
+
+Write-Host "[build] Project path: $projectDir"
+Write-Host "[build] Short path:   $shortProject"
+Write-Host "[build] Shared path:  $shortShared"
+Write-Host "[build] Core dir:     $coreDir"
+
+pio run -e esp32dev @args

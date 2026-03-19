@@ -10,6 +10,7 @@ ConsoleCommandCallback onCommandReceived = nullptr;
 
 void init(ConsoleCommandCallback callback) {
     onCommandReceived = callback;
+    Serial.println("[USB] Console ready. Type HELP for commands.");
 }
 
 void loop() {
@@ -19,6 +20,7 @@ void loop() {
             String command = protocol::normalizeFrame(usbConsoleBuffer);
             usbConsoleBuffer = "";
             if (command.length() > 0 && onCommandReceived) {
+                Serial.printf("[USB] RX command: %s\n", command.c_str());
                 onCommandReceived(command);
             }
             continue;

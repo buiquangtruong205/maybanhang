@@ -12,6 +12,7 @@ enum class CommandType : uint8_t {
     Ping,
     Dispense,
     TestMotor,
+    TestServo,
     Lock,
     Unlock,
     ResetAlarm,
@@ -38,6 +39,8 @@ inline String toCommandFrame(CommandType type, const String& payload = "") {
             return "CMD:DISPENSE:" + payload;
         case CommandType::TestMotor:
             return "CMD:TEST_MOTOR:" + payload;
+        case CommandType::TestServo:
+            return "CMD:TEST_SERVO:" + payload;
         case CommandType::Lock:
             return "CMD:LOCK:" + payload;
         case CommandType::Unlock:

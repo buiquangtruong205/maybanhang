@@ -1,5 +1,5 @@
 from app.utils.auth import token_required, generate_token
-from app.utils.machine_auth import machine_key_required, get_machine_id_from_key
+from app.utils.machine_auth import machine_key_required, multi_auth_required, get_machine_id_from_key
 from app.utils.security import (
     hmac_sign, hmac_verify, canonicalize_payload,
     validate_timestamp, validate_nonce, generate_nonce,

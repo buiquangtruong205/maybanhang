@@ -1,118 +1,131 @@
-# Vending Machine Firmware V3
+# Firmware V3
 
-Firmware is organized as separate PlatformIO projects.
+Firmware được chia thành 2 project PlatformIO riêng:
 
-- `esp32`: ESP32-WROOM main controller for Wi-Fi, MQTT/API, and vending logic
-- `uno`: Arduino Uno I/O controller for relays, sensors, locks, and low-level peripherals
-- `shared`: communication contract between the two boards
+- `esp32/`
+  Bộ điều khiển chính: Wi‑Fi, MQTT, API backend, giao diện TFT, keypad, OTA và điều phối vending flow.
+- `uno/`
+  Bộ điều khiển I/O: motor, gate servo, bill detector, drop sensor và giao thức UART với ESP32.
+- `shared/`
+  Phần giao thức dùng chung giữa ESP32 và Uno.
 
-## Structure
+## Cấu trúc
 
 ```text
 firmware/
   esp32/
-    src/
     include/
     lib/
+    src/
+    build.ps1
+    upload.ps1
     platformio.ini
   uno/
-    src/
     include/
-    lib/
+    src/
     platformio.ini
   shared/
     protocol.h
+  README.md
 ```
 
-## Build
+## Kiến trúc
+
+### ESP32
+
+[esp32/src/main.cpp](E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\esp32\src\main.cpp) hiện chỉ là entrypoint.
+
+Module chính:
+
+- `app_runtime.*`
+  Điều phối `setup()` và `loop()`.
+- `config_manager.*`
+  Lưu và đọc cấu hình từ NVS.
+- `display_ui.*`
+  Điều khiển giao diện TFT.
+- `input_manager.*`
+  Đọc keypad.
+- `wifi_manager.*`
+  Quản lý Wi‑Fi và reconnect.
+- `mqtt_manager.*`
+  Nhận lệnh và publish trạng thái qua MQTT.
+- `uno_comm.*`
+  Giao tiếp UART với Uno.
+- `usb_console.*`
+  Debug command qua serial.
+- `api_client.*`
+  Gọi backend API.
+- `vending_controller.*`
+  Business logic của máy bán hàng.
+- `ota_manager.*`
+  Luồng OTA update.
+
+### UNO
+
+[uno/src/main.cpp](E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\uno\src\main.cpp) cũng chỉ còn entrypoint.
+
+Module chính:
+
+- `hardware_manager.*`
+  Init phần cứng, update bill detector và gate.
+- `serial_protocol.*`
+  Parse command frame và gửi event frame.
+- `dispense_controller.*`
+  Điều khiển luồng nhả hàng và kiểm tra drop sensor.
+- `motor_controller.*`
+  Điều khiển motor.
+- `bill_detector.*`
+  Nhận diện bill.
+- `gate_manager.*`
+  Điều khiển servo gate.
+- `pins.h`
+  Ánh xạ chân.
+
+### Shared
+
+- [shared/protocol.h](E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\shared\protocol.h)
+  Khai báo baud rate, frame terminator và các helper command/event dùng chung.
+
+## Build và upload
+
+### ESP32
+
+Trên máy Windows này nên dùng helper script:
 
 ```powershell
-cd esp32
+cd E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\esp32
 .\build.ps1
-
-cd ..\uno
-pio run
+.\upload.ps1 --upload-port COM5
 ```
 
-## Notes
+Lý do:
 
-- On this Windows machine, raw `pio run` for `esp32` can intermittently fail with `xtensa-esp32-elf-g++: CreateProcess`.
-- The stable workaround is to build through a short mirrored path created under `E:\IoT\Du_An\Vending_Machine\f3`.
-- Use `esp32\build.ps1` and `esp32\upload.ps1` so PlatformIO automatically switches to the short path and local core directory.
+- đường dẫn gốc khá dài
+- `pio run` trực tiếp có thể lỗi `xtensa-esp32-elf-g++: CreateProcess`
+- `build.ps1` tự chuyển sang short path `E:\IoT\Du_An\Vending_Machine\Vesion_3\f3`
 
-## Bench Test Checklist
+### UNO
 
-Use two serial monitors when possible:
+```powershell
+cd E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\uno
+$env:PLATFORMIO_CORE_DIR='E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\.platformio-local'
+pio run -e uno -t upload --upload-port COM4
+```
 
-- `ESP32`: monitor payment flow, backend sync, Wi-Fi state
-- `UNO`: monitor motor state, drop sensor, door sensor
+## File cấu hình quan trọng
 
-### 1. Pre-check
+- [esp32/include/secrets.h](E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\esp32\include\secrets.h)
+  Giá trị mặc định cho Wi‑Fi, API và MQTT fallback.
+- [esp32/include/app_config.h](E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\esp32\include\app_config.h)
+  Pin và hằng số runtime của ESP32.
+- [uno/include/pins.h](E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\uno\include\pins.h)
+  Pin map của Uno.
 
-- Verify `firmware/esp32/include/secrets.h` contains the correct Wi-Fi and backend IP
-- Verify `firmware/esp32/include/app_config.h` matches the actual TFT and UART wiring
-- Power ESP32 and UNO from a stable supply; do not power the stepper directly from the Uno USB rail
-- Confirm UNO sends `EVT:READY:UNO_V3` at boot
+## Kiểm tra bench tối thiểu
 
-### 2. Communication test
-
-- Wait for ESP32 log showing Wi-Fi connected and device registration attempt
-- Confirm ESP32 prints periodic `[COMM] Pinging Uno...`
-- Confirm ESP32 receives `[COMM] Uno Connection: OK (PONG received)`
-
-### 3. Online payment test
-
-- Open ESP32 serial monitor
-- Send `PAY` or `PAY A1`
-- Confirm ESP32 logs:
-  - `[STATE] PAYMENT_BEGIN`
-  - `[ORDER] created ...`
-  - `[PAYMENT] order=... payment_code=...`
-- Confirm TFT displays QR code
-
-### 4. Payment success test
-
-- Complete payment using the displayed QR
-- Confirm ESP32 logs payment status changing to `PAID` or `SUCCESS`
-- Confirm ESP32 logs `[STATE] DISPENSE_START`
-- Confirm UNO logs:
-  - `[DISPENSE] Start slot payload: ...`
-  - `[DISPENSE] Motor movement completed`
-- Trigger the drop sensor
-- Confirm UNO logs `[SENSOR] Drop detected during dispense`
-- Confirm ESP32 logs backend report for dispense result
-
-### 5. Payment failure / timeout test
-
-- Start a payment and do not pay
-- Wait for timeout or cancel the payment
-- Confirm ESP32 leaves the QR screen and shows payment failed
-- Confirm no `DISPENSE` command is sent to UNO
-
-### 6. Dispense failure test
-
-- Start a paid order
-- Let the motor finish without triggering the drop sensor
-- Confirm UNO logs `[DISPENSE] Drop timeout`
-- Confirm ESP32 logs payment failed due to dispense failure
-- Confirm backend receives `dispense-complete` with `success=false`
-
-### 7. Wi-Fi reconnect test
-
-- Boot ESP32 with Wi-Fi off
-- Turn Wi-Fi on afterward
-- Confirm ESP32 reconnects, re-registers the device, and resumes heartbeat
-
-### Expected serial markers
-
-- ESP32:
-  - `[STATE]`
-  - `[ORDER]`
-  - `[PAYMENT]`
-  - `[BACKEND]`
-  - `[COMM]`
-  - `[WIFI]`
-- UNO:
-  - `[BOOT]`
-  - `[DISPENSE]`
-  - `[SENSOR]`
+1. ESP32 boot, kết nối Wi‑Fi và đăng ký device.
+2. ESP32 gửi `PING`, Uno trả `PONG`.
+3. Tạo payment QR.
+4. Payment success dẫn tới `DISPENSE`.
+5. Uno phát hiện drop sensor.
+6. ESP32 báo kết quả dispense về backend.

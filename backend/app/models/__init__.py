@@ -5,7 +5,7 @@ from app.models.database import (
     ApiAuditLog, StaffAccessLog,
     WebAuthnCredential,
     DeviceLog, FirmwareUpdate,
-    AdminActivityLog
+    AdminActivityLog, allocate_bigint_pk
 )
 
 __all__ = [
@@ -15,7 +15,7 @@ __all__ = [
     'ApiAuditLog', 'StaffAccessLog',
     'WebAuthnCredential',
     'DeviceLog', 'FirmwareUpdate',
-    'AdminActivityLog'
+    'AdminActivityLog', 'allocate_bigint_pk'
 ]
 
 

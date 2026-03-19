@@ -326,7 +326,7 @@ def audit_iot_request(f: Callable) -> Callable:
     """
     @wraps(f)
     def decorated(*args, **kwargs):
-        from app.models import ApiAuditLog
+        from app.models import ApiAuditLog, allocate_bigint_pk
         from app import db
         import hashlib
         
@@ -351,6 +351,7 @@ def audit_iot_request(f: Callable) -> Callable:
             # Log to database
             try:
                 audit = ApiAuditLog(
+                    request_id=allocate_bigint_pk(ApiAuditLog, ApiAuditLog.request_id),
                     machine_id=device_id,
                     endpoint=request.path,
                     method=request.method,
@@ -370,6 +371,7 @@ def audit_iot_request(f: Callable) -> Callable:
             # Log failed request
             try:
                 audit = ApiAuditLog(
+                    request_id=allocate_bigint_pk(ApiAuditLog, ApiAuditLog.request_id),
                     machine_id=device_id,
                     endpoint=request.path,
                     method=request.method,

@@ -1,5 +1,15 @@
 from datetime import datetime
+from sqlalchemy import func
 from app import db
+
+
+def allocate_bigint_pk(model, column):
+    """
+    SQLite only auto-increments INTEGER PRIMARY KEY columns.
+    These log tables use BigInteger PKs, so allocate IDs manually.
+    """
+    current_max = db.session.query(func.max(column)).scalar()
+    return 1 if current_max is None else int(current_max) + 1
 
 
 # -----------------------
@@ -31,7 +41,13 @@ class Machine(db.Model, TimestampMixin):
     name = db.Column(db.String(100), nullable=False, index=True)
     location = db.Column(db.String(200), nullable=True)
     status = db.Column(db.String(20), default="active", nullable=False, index=True)
-    secret_key = db.Column(db.String(200), nullable=True)  # khuyến nghị: secret_key_hash
+    secret_key = db.Column(db.String(200), unique=True, nullable=False, index=True)  # khuyến nghị: secret_key_hash
+    mqtt_command_topic = db.Column(db.String(255), nullable=True)
+    mqtt_status_topic = db.Column(db.String(255), nullable=True)
+    mqtt_broadcast_status_topic = db.Column(db.String(255), nullable=True)
+    ui_layout = db.Column(db.JSON, nullable=True)
+    device_profile = db.Column(db.JSON, nullable=True)
+    config_notes = db.Column(db.Text, nullable=True)
 
     # relationships
     slots = db.relationship("Slot", backref="machine", lazy=True)
@@ -65,6 +81,10 @@ class Slot(db.Model, TimestampMixin):
     capacity = db.Column(db.Integer, default=10, nullable=False)
 
     product = db.relationship("Product", backref="slots")
+
+    @property
+    def product_name(self):
+        return self.product.product_name if self.product else None
 
     __table_args__ = (
         db.UniqueConstraint("machine_id", "slot_code", name="uq_slots_machine_slotcode"),
@@ -185,6 +205,9 @@ class DeviceIdentity(db.Model):
     cert_fingerprint = db.Column(db.String(128), nullable=True, index=True)
     secure_element_id = db.Column(db.String(100), nullable=True, index=True)
     mac_address = db.Column(db.String(32), nullable=True, index=True)
+    rssi = db.Column(db.Integer, nullable=True)
+    wifi_ssid = db.Column(db.String(100), nullable=True)
+    uptime = db.Column(db.BigInteger, default=0, nullable=True)
 
     provisioned_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     revoked_at = db.Column(db.DateTime, nullable=True, index=True)
@@ -282,6 +305,7 @@ class FirmwareUpdate(db.Model):
     checksum = db.Column(db.String(128), nullable=False)
     
     status = db.Column(db.String(20), default="pending", nullable=False, index=True) # pending, downloading, installing, completed, failed
+    progress = db.Column(db.Integer, default=0, nullable=True)
     
     deployed_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     completed_at = db.Column(db.DateTime, nullable=True)

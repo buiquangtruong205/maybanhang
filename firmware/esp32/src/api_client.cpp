@@ -1,12 +1,74 @@
 #include "api_client.h"
+#include <WiFi.h>
 #include <HTTPClient.h>
+#include <ArduinoJson.h>
 #include "wifi_manager.h"
 #include "app_config.h"
+#include "config_manager.h"
 #include "secrets.h"
 
 namespace api_client {
 
 namespace {
+int lastStatusCode = 200;
+
+String maskMachineKey(const String& value) {
+    if (value.length() == 0) return "<empty>";
+    if (value.length() <= 4) return "****";
+    return value.substring(0, 4) + "...(" + String(value.length()) + ")";
+}
+
+void syncServerProfile(const JsonDocument& responseDoc) {
+    JsonVariantConst config = responseDoc["data"]["config"];
+    if (config.isNull()) {
+        return;
+    }
+
+    const String machineId = config["machine_id"] | "";
+    const String machineName = config["machine_name"] | "";
+    const String mqttBroker = config["mqtt"]["broker"] | "";
+    const uint16_t mqttPort = config["mqtt"]["port"] | config_manager::getMqttPort();
+    const String mqttCommandTopic = config["mqtt"]["topics"]["command"] | "";
+    const String mqttStatusTopic = config["mqtt"]["topics"]["status"] | "";
+    const String mqttBroadcastTopic = config["mqtt"]["topics"]["broadcast_status"] | "";
+    const String machineKey = config["machine_key"] | "";
+    
+    String uiLayoutJson;
+    String deviceProfileJson;
+    if (!config["ui"]["layout"].isNull()) {
+        serializeJson(config["ui"]["layout"], uiLayoutJson);
+    }
+    if (!config["device_profile"].isNull()) {
+        serializeJson(config["device_profile"], deviceProfileJson);
+    }
+
+    if (machineKey.length() > 0) {
+        config_manager::saveMachineKey(machineKey);
+    }
+
+    if (config_manager::applyServerProfile(
+            machineId,
+            machineName,
+            mqttBroker,
+            mqttPort,
+            mqttCommandTopic,
+            mqttStatusTopic,
+            mqttBroadcastTopic,
+            uiLayoutJson,
+            deviceProfileJson)) {
+        Serial.printf(
+            "[CONFIG] Applied backend profile: machineId=%s, machineName=%s, mqtt=%s:%u, cmdTopic=%s, theme=%s, cash=%d\n",
+            machineId.c_str(),
+            machineName.c_str(),
+            mqttBroker.c_str(),
+            mqttPort,
+            mqttCommandTopic.c_str(),
+            config_manager::getUiTheme().c_str(),
+            config_manager::isCashEnabled()
+        );
+    }
+}
+
 bool apiRequest(const String& method, const String& path, const String& payload, JsonDocument& outDoc, int& statusCode) {
     if (!wifi_manager::isConnected()) {
         statusCode = -1;
@@ -14,10 +76,17 @@ bool apiRequest(const String& method, const String& path, const String& payload,
     }
 
     HTTPClient http;
-    const String url = String(API_BASE_URL) + path;
+    const String apiBaseUrl = config_manager::getApiBaseUrl();
+    const String machineKey = config_manager::getMachineKey();
+    const String url = apiBaseUrl + path;
+
+    if (machineKey.length() == 0) {
+        Serial.printf("[HTTP] Warning: machine key is empty for %s\n", url.c_str());
+    }
+
     http.begin(url);
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("X-Machine-Key", esp32cfg::kMachineKey);
+    http.addHeader("X-Machine-Key", machineKey);
 
     if (method == "POST") {
         statusCode = http.POST(payload);
@@ -32,17 +101,34 @@ bool apiRequest(const String& method, const String& path, const String& payload,
     const String response = http.getString();
     http.end();
 
+    lastStatusCode = statusCode;
     Serial.printf("[HTTP] %s %s => %d\n", method.c_str(), url.c_str(), statusCode);
+    if (statusCode >= 400 || statusCode <= 0) {
+        Serial.printf(
+            "[HTTP] Failure details: base=%s, key=%s, response=%s\n",
+            apiBaseUrl.c_str(),
+            maskMachineKey(machineKey).c_str(),
+            response.c_str()
+        );
+    }
     if (statusCode <= 0) {
         return false;
     }
 
     const DeserializationError error = deserializeJson(outDoc, response);
+    if (error) {
+        Serial.printf("[HTTP] JSON parse failed for %s: %s\n", url.c_str(), error.c_str());
+        Serial.printf("[HTTP] Raw response: %s\n", response.c_str());
+    }
     return !error;
 }
 }
 
 void init() {}
+
+int getLastStatusCode() {
+    return lastStatusCode;
+}
 
 bool registerDevice() {
     JsonDocument requestDoc;
@@ -55,8 +141,40 @@ bool registerDevice() {
 
     JsonDocument responseDoc;
     int statusCode = 0;
-    if (!apiRequest("POST", "/iot/register-device", payload, responseDoc, statusCode)) return false;
-    return statusCode >= 200 && statusCode < 300 && (responseDoc["success"] | false);
+
+    // Special request for registration: use MASTER_REGISTRATION_KEY
+    if (wifi_manager::isConnected()) {
+        HTTPClient http;
+        String url = config_manager::getApiBaseUrl() + "/iot/register-device";
+        http.begin(url);
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("X-Machine-Key", MASTER_REGISTRATION_KEY);
+        
+        statusCode = http.POST(payload);
+        lastStatusCode = statusCode;
+        String response = http.getString();
+        http.end();
+        
+        Serial.printf("[HTTP] REGISTER %s => %d\n", url.c_str(), statusCode);
+        if (statusCode > 0) {
+            DeserializationError error = deserializeJson(responseDoc, response);
+            if (error) {
+                Serial.printf("[HTTP] REGISTER JSON parse failed: %s\n", error.c_str());
+            }
+        }
+
+        if (statusCode >= 200 && statusCode < 300) {
+            syncServerProfile(responseDoc);
+            return true;
+        }
+
+        if (statusCode == 409) {
+            Serial.println("[HTTP] Device already registered, continuing with current profile");
+            syncServerProfile(responseDoc);
+            return true;
+        }
+    }
+    return false;
 }
 
 bool sendHeartbeat() {
@@ -64,6 +182,7 @@ bool sendHeartbeat() {
     requestDoc["uptime"] = millis() / 1000;
     requestDoc["free_memory"] = ESP.getFreeHeap();
     requestDoc["wifi_rssi"] = WiFi.RSSI();
+    requestDoc["wifi_ssid"] = WiFi.SSID();
 
     String payload;
     serializeJson(requestDoc, payload);
@@ -71,6 +190,9 @@ bool sendHeartbeat() {
     JsonDocument responseDoc;
     int statusCode = 0;
     if (!apiRequest("POST", "/iot/heartbeat", payload, responseDoc, statusCode)) return false;
+    if (statusCode >= 200 && statusCode < 300) {
+        syncServerProfile(responseDoc);
+    }
     return statusCode >= 200 && statusCode < 300 && (responseDoc["success"] | false);
 }
 
@@ -166,6 +288,55 @@ bool reportDispenseResult(int orderId, const String& slotCode, bool success, con
     JsonDocument responseDoc;
     int statusCode = 0;
     if (!apiRequest("POST", "/iot/dispense-complete", payload, responseDoc, statusCode)) return false;
+    return statusCode >= 200 && statusCode < 300 && (responseDoc["success"] | false);
+}
+
+bool reportCashInsert(int orderId, int denomination, int& outRemaining) {
+    JsonDocument requestDoc;
+    requestDoc["order_id"] = orderId;
+    requestDoc["denomination"] = denomination;
+
+    String payload;
+    serializeJson(requestDoc, payload);
+
+    JsonDocument responseDoc;
+    int statusCode = 0;
+    outRemaining = -1; // Default
+    if (!apiRequest("POST", "/iot/cash-insert", payload, responseDoc, statusCode)) return false;
+    
+    if (statusCode >= 200 && statusCode < 300 && responseDoc["success"].as<bool>()) {
+        outRemaining = responseDoc["data"]["remaining"] | 0;
+        return true;
+    }
+    return false;
+}
+
+bool reportLog(const String& level, const String& message) {
+    JsonDocument requestDoc;
+    requestDoc["level"] = level;
+    requestDoc["message"] = message;
+
+    String payload;
+    serializeJson(requestDoc, payload);
+
+    JsonDocument responseDoc;
+    int statusCode = 0;
+    if (!apiRequest("POST", "/iot/report-log", payload, responseDoc, statusCode)) return false;
+    return statusCode >= 200 && statusCode < 300 && (responseDoc["success"] | false);
+}
+
+bool reportOTAProgress(int updateId, int progress, const String& status) {
+    JsonDocument requestDoc;
+    requestDoc["update_id"] = updateId;
+    requestDoc["progress"] = progress;
+    if (status.length() > 0) requestDoc["status"] = status;
+
+    String payload;
+    serializeJson(requestDoc, payload);
+
+    JsonDocument responseDoc;
+    int statusCode = 0;
+    if (!apiRequest("POST", "/firmware/report-progress", payload, responseDoc, statusCode)) return false;
     return statusCode >= 200 && statusCode < 300 && (responseDoc["success"] | false);
 }
 

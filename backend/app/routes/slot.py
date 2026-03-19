@@ -3,13 +3,15 @@ from pydantic import ValidationError
 from app import db
 from app.models import Slot
 from app.schemas import SlotCreate, SlotOut
-from app.utils import token_required
+from app.utils import token_required, multi_auth_required
+from app.websocket import emit_stock_update
 from app.utils.admin_logger import log_admin_action
 
 slot_bp = Blueprint('slot', __name__)
 
 @slot_bp.route('/slots', methods=['GET'])
-def get_slots():
+@multi_auth_required
+def get_slots(current_auth):
     machine_id = request.args.get('machine_id', type=int)
     if machine_id:
         slots = Slot.query.filter_by(machine_id=machine_id).all()
@@ -22,7 +24,8 @@ def get_slots():
     })
 
 @slot_bp.route('/slots/<int:slot_id>', methods=['GET'])
-def get_slot(slot_id):
+@multi_auth_required
+def get_slot(current_auth, slot_id):
     slot = Slot.query.filter_by(slot_id=slot_id).first()
     if not slot:
         return jsonify({
@@ -59,6 +62,13 @@ def create_slot(current_user):
         
         db.session.add(new_slot)
         db.session.commit()
+        
+        # Real-time update
+        emit_stock_update(new_slot.machine_id, {
+            'slot_code': new_slot.slot_code,
+            'new_stock': new_slot.stock,
+            'product_id': new_slot.product_id
+        })
         
         log_admin_action(
             user_id=current_user.user_id,
@@ -120,6 +130,13 @@ def update_slot(current_user, slot_id):
         
         db.session.commit()
         
+        # Real-time update
+        emit_stock_update(slot.machine_id, {
+            'slot_code': slot.slot_code,
+            'new_stock': slot.stock,
+            'product_id': slot.product_id
+        })
+        
         log_admin_action(
             user_id=current_user.user_id,
             action='update_slot',
@@ -151,20 +168,34 @@ def delete_slot(current_user, slot_id):
             'success': False,
             'message': 'Slot not found'
         }), 404
-    slot_code = slot.slot_code
-    machine_id = slot.machine_id
-    db.session.delete(slot)
-    db.session.commit()
     
-    log_admin_action(
-        user_id=current_user.user_id,
-        action='delete_slot',
-        detail=f"Xóa slot '{slot_code}' máy {machine_id}",
-        target_type='slot',
-        target_id=slot_id
-    )
+    # Import locally to avoid circular dependencies
+    from app.models import Order
     
-    return jsonify({
-        'success': True,
-        'message': 'Slot deleted successfully'
-    }), 200
+    try:
+        # Trước khi xóa khe hàng, ta gỡ liên kết với các Đơn hàng liên quan
+        # (Đặt slot_id về NULL trong bảng orders)
+        db.session.query(Order).filter_by(slot_id=slot_id).update({'slot_id': None})
+        
+        db.session.delete(slot)
+        db.session.commit()
+        
+        log_admin_action(
+            user_id=current_user.user_id,
+            action='delete_slot',
+            detail=f"Xóa khe '{slot.slot_code}' máy {slot.machine_id}",
+            target_type='slot',
+            target_id=slot_id
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Slot deleted successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error deleting slot: {str(e)}'
+        }), 500

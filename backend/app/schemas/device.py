@@ -10,6 +10,9 @@ class DeviceIdentityCreate(BaseModel):
     cert_fingerprint: Optional[str] = None
     secure_element_id: Optional[str] = None
     mac_address: Optional[str] = None
+    rssi: Optional[int] = None
+    wifi_ssid: Optional[str] = None
+    uptime: Optional[int] = None
     status: str = 'active'
 
 
@@ -19,6 +22,9 @@ class DeviceIdentityOut(BaseModel):
     cert_fingerprint: Optional[str]
     secure_element_id: Optional[str]
     mac_address: Optional[str]
+    rssi: Optional[int]
+    wifi_ssid: Optional[str]
+    uptime: Optional[int]
     provisioned_at: datetime
     revoked_at: Optional[datetime]
     status: str

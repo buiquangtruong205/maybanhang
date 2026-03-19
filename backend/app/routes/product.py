@@ -4,7 +4,7 @@ from werkzeug.utils import secure_filename
 from app import db
 from app.models import Product
 from app.schemas import ProductCreate, ProductOut
-from app.utils import token_required
+from app.utils import token_required, multi_auth_required
 from app.utils.admin_logger import log_admin_action
 import os
 import uuid
@@ -62,7 +62,8 @@ def upload_image(current_user):
     }), 400
 
 @product_bp.route('/products', methods=['GET'])
-def get_products():
+@multi_auth_required
+def get_products(current_auth):
     products = Product.query.all()
     return jsonify({
         'success': True,
@@ -71,7 +72,8 @@ def get_products():
     })
 
 @product_bp.route('/products/<int:product_id>', methods=['GET'])
-def get_product(product_id):
+@multi_auth_required
+def get_product(current_auth, product_id):
     product = Product.query.filter_by(product_id=product_id).first()
     if not product:
         return jsonify({
@@ -178,19 +180,32 @@ def delete_product(current_user, product_id):
             'success': False,
             'message': 'Product not found'
         }), 404
+    
     product_name = product.product_name
-    db.session.delete(product)
-    db.session.commit()
     
-    log_admin_action(
-        user_id=current_user.user_id,
-        action='delete_product',
-        detail=f"Xóa sản phẩm '{product_name}'",
-        target_type='product',
-        target_id=product_id
-    )
-    
-    return jsonify({
-        'success': True,
-        'message': 'Product deleted successfully'
-    }), 200
+    try:
+        # Thay vì xóa cứng, ta chuyển sang trạng thái "Không hoạt động" (Soft Delete)
+        # Điều này giúp bảo tồn lịch sử Đơn hàng (Orders) đã từng mua sản phẩm này.
+        product.active = False
+        db.session.commit()
+        
+        log_admin_action(
+            user_id=current_user.user_id,
+            action='delete_product',
+            detail=f"Dừng hoạt động sản phẩm '{product_name}' (Xóa mềm)",
+            target_type='product',
+            target_id=product_id
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': f"Sản phẩm '{product_name}' đã được chuyển sang trạng thái ngưng hoạt động."
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error soft-deleting product: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Đã có lỗi xảy ra khi ngưng hoạt động sản phẩm'
+        }), 500

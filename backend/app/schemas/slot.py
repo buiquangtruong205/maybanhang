@@ -22,6 +22,7 @@ class SlotOut(BaseModel):
     machine_id: int
     slot_code: str
     product_id: Optional[int]
+    product_name: Optional[str] = None
     stock: int
     capacity: int
     created_at: datetime

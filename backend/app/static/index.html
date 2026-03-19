@@ -5,11 +5,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vending Machine - Quản lý</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=13">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 
 <body>
+    <!-- bg-blobs -->
+    <div class="bg-blobs">
+        <div class="blob footer-blob"></div>
+        <div class="blob header-blob"></div>
+    </div>
+
     <!-- Login Modal -->
     <div id="loginModal" class="modal">
         <div class="modal-content login-form">
@@ -111,6 +117,20 @@
                             <span class="stat-value" id="statTotalOrders">0</span>
                         </div>
                     </div>
+                    <div class="stat-card stat-health-online">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-info">
+                            <span class="stat-label">Máy Online</span>
+                            <span class="stat-value" id="statOnlineMachines">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-health-offline">
+                        <div class="stat-icon">❌</div>
+                        <div class="stat-info">
+                            <span class="stat-label">Máy Offline</span>
+                            <span class="stat-value" id="statOfflineMachines">0</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -123,12 +143,14 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Tên máy</th>
-                            <th>Vị trí</th>
-                            <th>Trạng thái</th>
-                            <th>Secret Key</th>
-                            <th>Thao tác</th>
+                            <th class="table-align-center w-5">ID</th>
+                            <th class="w-15">TÊN MÁY</th>
+                            <th class="w-15">VỊ TRÍ</th>
+                            <th class="table-align-center w-10">WIFI</th>
+                            <th class="table-align-center w-15">UPTIME</th>
+                            <th class="table-align-center w-15">TRẠNG THÁI</th>
+                            <th class="table-align-center w-15">ĐIỀU KHIỂN</th>
+                            <th class="table-align-center w-10">THAO TÁC</th>
                         </tr>
                     </thead>
                     <tbody id="machinesTable"></tbody>
@@ -144,12 +166,12 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Tên sản phẩm</th>
-                            <th>Giá</th>
-                            <th>Ảnh sản phẩm</th>
-                            <th>Trạng thái</th>
-                            <th>Thao tác</th>
+                            <th class="table-align-center w-5">ID</th>
+                            <th class="w-25">TÊN SẢN PHẨM</th>
+                            <th class="w-15">GIÁ</th>
+                            <th class="table-align-center w-20">ẢNH SẢN PHẨM</th>
+                            <th class="table-align-center w-20">TRẠNG THÁI</th>
+                            <th class="table-align-center w-15">THAO TÁC</th>
                         </tr>
                     </thead>
                     <tbody id="productsTable"></tbody>
@@ -165,13 +187,13 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Máy</th>
-                            <th>Mã khe</th>
-                            <th>Sản phẩm</th>
-                            <th>Tồn kho</th>
-                            <th>Sức chứa</th>
-                            <th>Thao tác</th>
+                            <th class="table-align-center w-5">ID</th>
+                            <th class="table-align-center w-10">MÁY</th>
+                            <th class="table-align-center w-10">MÃ KHE</th>
+                            <th class="table-align-center">SẢN PHẨM</th>
+                            <th class="table-align-center w-10">TỒN KHO</th>
+                            <th class="table-align-center w-10">SỨC CHỨA</th>
+                            <th class="table-align-center w-15">THAO TÁC</th>
                         </tr>
                     </thead>
                     <tbody id="slotsTable"></tbody>
@@ -186,13 +208,13 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Sản phẩm</th>
-                            <th>Giá</th>
-                            <th>Khe</th>
-                            <th>TT Thanh toán</th>
-                            <th>TT Kho</th>
-                            <th>Ngày tạo</th>
+                            <th class="table-align-center w-5">ID</th>
+                            <th class="w-20">SẢN PHẨM</th>
+                            <th class="table-align-center w-15">GIÁ</th>
+                            <th class="table-align-center w-10">KHE</th>
+                            <th class="table-align-center w-15">TT THANH TOÁN</th>
+                            <th class="table-align-center w-15">TT KHO</th>
+                            <th class="table-align-center w-20">NGÀY TẠO</th>
                         </tr>
                     </thead>
                     <tbody id="ordersTable"></tbody>
@@ -207,21 +229,18 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Mã Đơn</th>
-                            <th>Số tiền</th>
-                            <th>Mã GD Ngân hàng</th>
-                            <th>TK Gửi</th>
-                            <th>Ngân hàng</th>
-                            <th>Mô tả</th>
-                            <th>Trạng thái</th>
+                            <th class="table-align-center">ID</th>
+                            <th class="table-align-center">MÃ ĐƠN</th>
+                            <th class="table-align-center">SỐ TIỀN</th>
+                            <th class="table-align-center">MÃ GD NGÂN HÀNG</th>
+                            <th class="table-align-center">THỜI GIAN</th>
+                            <th>MÔ TẢ</th>
+                            <th class="table-align-center">TRẠNG THÁI</th>
                         </tr>
                     </thead>
                     <tbody id="transactionsTable"></tbody>
                 </table>
             </div>
-
-
 
             <!-- Devices Tab -->
             <div id="devices" class="tab-content">
@@ -239,12 +258,12 @@
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Log ID</th>
-                                <th>Máy</th>
-                                <th>Level</th>
-                                <th>Nội dung</th>
-                                <th>Data</th>
-                                <th>Thời gian</th>
+                            <th class="table-align-center">LOG ID</th>
+                            <th class="table-align-center">MÁY</th>
+                            <th class="table-align-center">LEVEL</th>
+                            <th>NỘI DUNG</th>
+                            <th class="table-align-center">DATA</th>
+                            <th class="table-align-center">THỜI GIAN</th>
                             </tr>
                         </thead>
                         <tbody id="deviceLogsTable"></tbody>
@@ -255,12 +274,12 @@
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Máy ID</th>
-                                <th>MAC Address</th>
-                                <th>Fingerprint</th>
-                                <th>Trạng thái</th>
-                                <th>Ngày cấp</th>
-                                <th>Thao tác</th>
+                                <th class="table-align-center">MÁY ID</th>
+                                <th class="table-align-center">MAC ADDRESS</th>
+                                <th class="table-align-center">FINGERPRINT</th>
+                                <th class="table-align-center">TRẠNG THÁI</th>
+                                <th class="table-align-center">NGÀY CẤP</th>
+                                <th class="table-align-center">THAO TÁC</th>
                             </tr>
                         </thead>
                         <tbody id="deviceIdentityTable"></tbody>
@@ -271,13 +290,13 @@
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Session ID</th>
-                                <th>Máy</th>
-                                <th>IP</th>
-                                <th>Phát hành</th>
-                                <th>Hết hạn</th>
-                                <th>Trạng thái</th>
-                                <th>Thao tác</th>
+                                <th class="table-align-center">SESSION ID</th>
+                                <th class="table-align-center">MÁY</th>
+                                <th class="table-align-center">IP</th>
+                                <th class="table-align-center">PHÁT HÀNH</th>
+                                <th class="table-align-center">HẾT HẠN</th>
+                                <th class="table-align-center">TRẠNG THÁI</th>
+                                <th class="table-align-center">THAO TÁC</th>
                             </tr>
                         </thead>
                         <tbody id="deviceSessionsTable"></tbody>
@@ -288,12 +307,13 @@
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Update ID</th>
-                                <th>Máy</th>
-                                <th>Version</th>
-                                <th>Trạng thái</th>
-                                <th>Deployed At</th>
-                                <th>Completed At</th>
+                                <th>UPDATE ID</th>
+                                <th>MÁY</th>
+                                <th>VERSION</th>
+                                <th>TRẠNG THÁI</th>
+                                <th>TIẾN ĐỘ</th>
+                                <th>DEPLOYED AT</th>
+                                <th>COMPLETED AT</th>
                             </tr>
                         </thead>
                         <tbody id="deviceFirmwareTable"></tbody>
@@ -305,8 +325,8 @@
             <div id="admin-logs" class="tab-content">
                 <div class="tab-header">
                     <h2>Lịch sử hoạt động Admin</h2>
-                    <div style="display: flex; gap: 10px;">
-                        <select id="adminActionFilter" onchange="loadAdminLogs()">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <select id="adminActionFilter" class="filter-select" style="min-width: 200px;" onchange="loadAdminLogs()">
                             <option value="">Tất cả thao tác</option>
                             <option value="login">Đăng nhập thành công</option>
                             <option value="login_failed">Đăng nhập thất bại</option>
@@ -322,7 +342,7 @@
                             <option value="update_user">Sửa user</option>
                             <option value="delete_user">Xóa user</option>
                         </select>
-                        <select id="adminTypeFilter" onchange="loadAdminLogs()">
+                        <select id="adminTypeFilter" class="filter-select" style="min-width: 200px;" onchange="loadAdminLogs()">
                             <option value="">Tất cả loại đối tượng</option>
                             <option value="product">Product</option>
                             <option value="slot">Slot</option>
@@ -334,40 +354,51 @@
                 </div>
 
                 <div class="stats-container" style="margin-bottom: 20px;">
-                    <div class="stat-card" style="padding: 15px; background: #fff; border-radius: 8px;">
-                        <span style="font-size: 0.9em; color: #64748b;">Tổng Thao Tác</span><br />
-                        <strong style="font-size: 1.2em; color: #1e293b;" id="statAdminTotal">0</strong>
+                    <div class="stat-card stat-orders">
+                        <div class="stat-icon">📈</div>
+                        <div class="stat-info">
+                            <span class="stat-label">Tổng Thao Tác</span>
+                            <span class="stat-value" id="statAdminTotal">0</span>
+                        </div>
                     </div>
-                    <div class="stat-card" style="padding: 15px; background: #fff; border-radius: 8px;">
-                        <span style="font-size: 0.9em; color: #64748b;">Đăng Nhập</span><br />
-                        <strong style="font-size: 1.2em; color: #1e293b;" id="statAdminLogins">0</strong>
+                    <div class="stat-card stat-health-online">
+                        <div class="stat-icon">🔑</div>
+                        <div class="stat-info">
+                            <span class="stat-label">Đăng Nhập</span>
+                            <span class="stat-value" id="statAdminLogins">0</span>
+                        </div>
                     </div>
-                    <div class="stat-card" style="padding: 15px; background: #fff; border-radius: 8px;">
-                        <span style="font-size: 0.9em; color: #64748b;">Thao Tác Cập Nhật</span><br />
-                        <strong style="font-size: 1.2em; color: #1e293b;" id="statAdminUpdates">0</strong>
+                    <div class="stat-card stat-product">
+                        <div class="stat-icon">🔄</div>
+                        <div class="stat-info">
+                            <span class="stat-label">Cập Nhật</span>
+                            <span class="stat-value" id="statAdminUpdates">0</span>
+                        </div>
                     </div>
-                    <div class="stat-card" style="padding: 15px; background: #fff; border-radius: 8px;">
-                        <span style="font-size: 0.9em; color: #64748b;">Xin Chào User</span><br />
-                        <strong style="font-size: 1.2em; color: #1e293b;" id="statAdminFailed">0</strong> Lỗi đăng nhập
+                    <div class="stat-card stat-health-offline">
+                        <div class="stat-icon">❌</div>
+                        <div class="stat-info">
+                            <span class="stat-label">Lỗi Đăng Nhập</span>
+                            <span class="stat-value" id="statAdminFailed">0</span>
+                        </div>
                     </div>
                 </div>
 
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Log ID</th>
-                            <th>Người dùng (ID)</th>
-                            <th>Thao tác</th>
-                            <th>Chi tiết</th>
-                            <th>Đối tượng</th>
-                            <th>IP Address</th>
-                            <th>Thời gian</th>
+                            <th class="table-align-center w-5">LOG ID</th>
+                            <th class="w-15">NGƯỜI DÙNG (ID)</th>
+                            <th class="table-align-center w-10">THAO TÁC</th>
+                            <th>CHI TIẾT</th>
+                            <th class="table-align-center w-10">ĐỐI TƯỢNG</th>
+                            <th class="table-align-center w-15">IP ADDRESS</th>
+                            <th class="table-align-center w-15">THỜI GIAN</th>
                         </tr>
                     </thead>
                     <tbody id="adminLogsTable"></tbody>
                 </table>
             </div>
-
 
         </div>
     </div>
@@ -392,7 +423,8 @@
         <img id="previewImage" src="" alt="Preview">
     </div>
 
-    <script src="/static/app.js?v=2"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/static/app.js?v=5"></script>
 </body>
 
 </html>

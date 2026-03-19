@@ -1,19 +1,21 @@
 #pragma once
 
 // ============================================
-// WiFi Configuration
+// WiFi Fallback (Optional)
 // ============================================
-#define WIFI_SSID     "Bang"
-#define WIFI_PASSWORD "12345678"
+#define WIFI_SSID     ""
+#define WIFI_PASSWORD ""
 
 // ============================================
-// Backend API
+// Backend API Defaults
 // ============================================
-#define API_BASE_URL  "http://192.168.38.85:5000/api"
+#define API_BASE_URL  "http://0.0.0.0:5000/api"
+#define DEVICE_MACHINE_KEY ""
+#define MASTER_REGISTRATION_KEY "maybanhang-v3-factory"
 
 // ============================================
-// MQTT Broker
+// MQTT Broker Defaults
 // ============================================
-#define MQTT_BROKER   "192.168.38.85"
+#define MQTT_BROKER   "0.0.0.0"
 #define MQTT_USER     ""
 #define MQTT_PASS     ""

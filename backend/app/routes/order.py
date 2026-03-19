@@ -1,9 +1,12 @@
 from flask import Blueprint, request, jsonify
 from pydantic import ValidationError
+from datetime import datetime
 from app import db
 from app.models import Order, Slot, Product
 from app.schemas import OrderCreate, OrderOut
 from app.utils import token_required
+from app.utils.machine_auth import multi_auth_required
+from app.websocket import emit_stock_update, emit_admin_order_new
 
 order_bp = Blueprint('order', __name__)
 
@@ -77,6 +80,21 @@ def create_order():
         
         db.session.add(new_order)
         db.session.commit()
+
+        # Real-time update
+        emit_stock_update(slot.machine_id, {
+            'slot_code': slot.slot_code,
+            'new_stock': slot.stock,
+            'product_id': slot.product_id
+        })
+        
+        emit_admin_order_new({
+            'order_id': new_order.order_id,
+            'product_name': slot.product.product_name if slot.product else "Unknown",
+            'amount': float(new_order.price_snapshot),
+            'status': new_order.status_payment,
+            'timestamp': datetime.utcnow().isoformat()
+        })
         
         order_out = OrderOut.model_validate(new_order)
         return jsonify({
@@ -91,10 +109,17 @@ def create_order():
             'message': 'Validation error',
             'errors': e.errors()
         }), 422
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        }), 500
 
 
 @order_bp.route('/orders/pending', methods=['POST'])
-def create_pending_order():
+@multi_auth_required
+def create_pending_order(current_auth):
     """Create a pending order before payment (for QR payment flow)"""
     try:
         print("🕒 POST /api/orders/pending received")
@@ -107,13 +132,27 @@ def create_pending_order():
             }), 400
         
         product_id = json_data.get('product_id')
-        price_snapshot = json_data.get('price_snapshot')
         slot_id = json_data.get('slot_id')  # Optional - can be None for demo
-        
-        if not product_id or not price_snapshot:
+        quantity = json_data.get('quantity', 1)
+
+        if not product_id:
             return jsonify({
                 'success': False,
-                'message': 'product_id and price_snapshot are required'
+                'message': 'product_id is required'
+            }), 400
+
+        try:
+            quantity = int(quantity)
+        except (TypeError, ValueError):
+            return jsonify({
+                'success': False,
+                'message': 'quantity must be an integer'
+            }), 400
+
+        if quantity < 1:
+            return jsonify({
+                'success': False,
+                'message': 'quantity must be greater than 0'
             }), 400
         
         # Kiểm tra product tồn tại
@@ -125,9 +164,6 @@ def create_pending_order():
             }), 404
         
         # Tạo order với status pending (chưa thanh toán)
-        # Fix #3: Tính toán số lượng stock thực tế còn lại = tổng stock - tổng pending orders
-        # (Để tránh trường hợp nhiều người quét tạo pending order nhưng không thanh toán, 
-        #  khiến người khác mua ảo được)
         from sqlalchemy import func
         from datetime import datetime, timedelta
         
@@ -140,20 +176,35 @@ def create_pending_order():
             Order.created_at >= timeout_threshold
         ).scalar() or 0
         
-        # Check available stock vs product total stock (if slot is not specified)
-        # For simplicity, we assume we check against product's total stock
-        available_stock = product.stock - pending_qty
+        if slot_id is not None:
+            slot = Slot.query.get(slot_id)
+            if not slot:
+                return jsonify({
+                    'success': False,
+                    'message': 'Slot not found'
+                }), 404
+            if slot.product_id != product_id:
+                return jsonify({
+                    'success': False,
+                    'message': 'slot_id does not belong to the requested product'
+                }), 400
+            available_stock = slot.stock - pending_qty
+        else:
+            available_stock = product.stock - pending_qty
         
-        if available_stock < 1:
+        if available_stock < quantity:
             return jsonify({
                 'success': False,
                 'message': 'Sản phẩm tạm thời hết hàng hoặc đang có người khác đặt mua. Vui lòng thử lại sau.'
             }), 400
+
+        price_snapshot = float(product.price) * quantity
         
         new_order = Order(
             product_id=product_id,
             price_snapshot=price_snapshot,
             slot_id=slot_id,
+            quantity=quantity,
             status_payment='pending',
             status_slots='pending'
         )
@@ -169,14 +220,16 @@ def create_pending_order():
         }), 201
     
     except Exception as e:
+        db.session.rollback()
         return jsonify({
             'success': False,
             'message': f'Error creating order: {str(e)}'
         }), 500
 
 
-@order_bp.route('/orders/<int:order_id>/complete', methods=['PUT'])
-def complete_order(order_id):
+@order_bp.route('/orders/<int:order_id>/complete', methods=['PUT', 'POST'])
+@multi_auth_required
+def complete_order(current_auth, order_id):
     """Mark order as completed after successful payment"""
     try:
         order = Order.query.get(order_id)
@@ -221,8 +274,23 @@ def complete_order(order_id):
                 if product and product.stock == 0:
                     product.active = False
                     print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (total stock=0)")
+            
+            # Real-time update
+            emit_stock_update(slot.machine_id, {
+                'slot_code': slot.slot_code,
+                'new_stock': slot.stock,
+                'product_id': slot.product_id
+            })
         
         db.session.commit()
+
+        emit_admin_order_new({
+            'order_id': order.order_id,
+            'product_name': order.product.product_name if order.product else "Unknown",
+            'amount': float(order.price_snapshot),
+            'status': order.status_payment,
+            'timestamp': datetime.utcnow().isoformat()
+        })
         
         order_out = OrderOut.model_validate(order)
         return jsonify({
@@ -232,14 +300,16 @@ def complete_order(order_id):
         })
     
     except Exception as e:
+        db.session.rollback()
         return jsonify({
             'success': False,
             'message': f'Error completing order: {str(e)}'
         }), 500
 
 
-@order_bp.route('/orders/<int:order_id>/cancel', methods=['PUT'])
-def cancel_order(order_id):
+@order_bp.route('/orders/<int:order_id>/cancel', methods=['PUT', 'POST'])
+@multi_auth_required
+def cancel_order(current_auth, order_id):
     """Cancel a pending order"""
     try:
         order = Order.query.get(order_id)
@@ -265,6 +335,7 @@ def cancel_order(order_id):
         })
     
     except Exception as e:
+        db.session.rollback()
         return jsonify({
             'success': False,
             'message': f'Error cancelling order: {str(e)}'
@@ -272,7 +343,8 @@ def cancel_order(order_id):
 
 
 @order_bp.route('/orders/<int:order_id>/status', methods=['GET'])
-def get_order_status(order_id):
+@multi_auth_required
+def get_order_status(current_auth, order_id):
     """Get order status from database (public endpoint for polling)"""
     try:
         order = Order.query.get(order_id)

@@ -1,1 +1,4 @@
 .pio
+.platformio-local/
+esp32/.pio/
+uno/.pio/

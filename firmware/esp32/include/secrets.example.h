@@ -10,6 +10,7 @@
 // Backend API
 // ============================================
 #define API_BASE_URL  "http://192.168.1.6:5000/api"
+#define DEVICE_MACHINE_KEY "replace-with-admin-machine-secret"
 
 // ============================================
 // MQTT Broker

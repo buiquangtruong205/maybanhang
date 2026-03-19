@@ -19,6 +19,7 @@ from app.schemas.payment import (
 )
 from app.websocket import emit_payment_success, emit_payment_cancelled
 from app.utils.mqtt import send_dispense_command
+from app.utils.machine_auth import multi_auth_required
 import os
 
 def debug_log(msg):
@@ -134,9 +135,6 @@ def _settle_paid_order(real_order_id: int, payment_code: int, amount=None, trans
             debug_log(f"{source.upper()}: Product {product.product_id} deactivated")
             print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (total stock=0)")
 
-    # INSTANT DISPENSE via MQTT
-    send_dispense_command(slot.slot_code)
-
     existing_transaction = Transaction.query.filter_by(order_id=real_order_id).first()
     if not existing_transaction:
         reference = None
@@ -160,11 +158,23 @@ def _settle_paid_order(real_order_id: int, payment_code: int, amount=None, trans
         print(f"ℹ️ Transaction already exists for order #{locked_order.order_id}")
 
     db.session.commit()
-    emit_payment_success(real_order_id, {
-        'amount': float(_normalize_amount(amount) or _normalize_amount(locked_order.price_snapshot)),
-        'payment_code': payment_code,
-        'synced': source != 'webhook'
-    })
+
+    try:
+        send_dispense_command(slot.machine_id, slot.slot_code)
+    except Exception as exc:
+        debug_log(
+            f"{source.upper()}: Failed to send dispense command for order {real_order_id}, "
+            f"slot {slot.slot_code}: {exc}"
+        )
+
+    try:
+        emit_payment_success(real_order_id, {
+            'amount': float(_normalize_amount(amount) or _normalize_amount(locked_order.price_snapshot)),
+            'payment_code': payment_code,
+            'synced': source != 'webhook'
+        })
+    except Exception as exc:
+        debug_log(f"{source.upper()}: Failed to emit payment success for order {real_order_id}: {exc}")
 
     return {
         'ok': True,
@@ -279,7 +289,8 @@ def _record_payment_callback(payload: dict, signature_ok: bool, order_id=None, b
 
 
 @payment_bp.route('/payment/create', methods=['POST'])
-def create_payment():
+@multi_auth_required
+def create_payment(current_auth):
     """
     Create a PayOS payment link.
     """
@@ -489,7 +500,8 @@ def payment_webhook():
 
 
 @payment_bp.route('/payment/status/<int:order_code>', methods=['GET'])
-def check_payment_status(order_code):
+@multi_auth_required
+def check_payment_status(current_auth, order_code):
     """
     Check payment status by order code and sync to database if paid.
     """
@@ -541,7 +553,8 @@ def check_payment_status(order_code):
 
 
 @payment_bp.route('/payment/sync/<int:order_code>', methods=['POST'])
-def sync_payment_status(order_code):
+@multi_auth_required
+def sync_payment_status(current_auth, order_code):
     """
     Manually sync payment status from PayOS to database.
     Useful for debugging or when webhook fails.
@@ -635,8 +648,9 @@ def sync_payment_status(order_code):
         }), 500
 
 
-@payment_bp.route('/payment/cancel/<int:order_code>', methods=['POST'])
-def cancel_payment_link(order_code):
+@payment_bp.route('/payment/cancel/<int:order_code>', methods=['POST', 'PUT'])
+@multi_auth_required
+def cancel_payment_link(current_auth, order_code):
     """
     Cancel a pending payment by order code.
     """
