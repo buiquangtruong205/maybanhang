@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f0f1a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Máy Bán Hàng Tự Động</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Prevent zoom on input focus for iOS */
+        input,
+        button,
+        textarea,
+        select {
+            font-size: 16px !important;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Dynamic Background Blobs -->
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon">🏪</span>
+                <h1>Máy Bán Hàng</h1>
+            </div>
+            <div class="header-right">
+                <span class="clock" id="clock"></span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-container">
+        <!-- Products Section -->
+        <section class="products-section">
+            <h2 class="section-title">
+                <span class="title-icon">🛒</span>
+                Chọn Sản Phẩm
+            </h2>
+            <div class="products-grid" id="products-grid">
+                <!-- Products will be loaded here -->
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                    <p>Đang tải sản phẩm...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Cart Section -->
+        <section class="cart-section">
+            <h2 class="section-title">
+                <button class="cart-back-btn" id="cart-back-btn" onclick="hideCartView()" style="display:none;">← Quay Lại</button>
+                <span class="title-icon">🧾</span>
+                Đơn Hàng
+                <span class="cart-badge" id="cart-count">0</span>
+            </h2>
+            <div class="cart-items" id="cart-items">
+                <div class="empty-cart">
+                    <span class="empty-icon">📦</span>
+                    <p>Chưa có sản phẩm nào</p>
+                </div>
+            </div>
+            <div class="cart-total">
+                <span>Tổng cộng:</span>
+                <span class="total-amount" id="total-amount">0 ₫</span>
+            </div>
+            <div class="checkout-buttons">
+                <button class="checkout-btn checkout-qr" id="checkout-btn" disabled onclick="startCheckout()"
+                    title="Thanh toán bằng QR PayOS">
+                    <span class="btn-icon">📱</span>
+                    QR / Chuyển khoản
+                </button>
+                <button class="checkout-btn checkout-cash" id="checkout-cash-btn" disabled onclick="startCashPayment()"
+                    title="Thanh toán bằng tiền mặt">
+                    <span class="btn-icon">💵</span>
+                    Tiền Mặt
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- QR Payment Modal -->
+    <div class="modal" id="qr-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content qr-modal-content">
+            <div class="modal-header">
+                <h3>Quét Mã QR Để Thanh Toán</h3>
+                <button class="modal-close" id="qr-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="qr-container">
+                    <img class="qr-code" id="qr-code" src="" alt="QR Code">
+                </div>
+                <div class="payment-info">
+                    <p class="order-code">Mã đơn hàng: <strong id="order-code-display">---</strong></p>
+                    <p class="payment-amount">Số tiền: <strong id="payment-amount-display">0 ₫</strong></p>
+                </div>
+                <div class="payment-status" id="payment-status">
+                    <div class="status-waiting">
+                        <div class="pulse-ring"></div>
+                        <span>Đang chờ thanh toán...</span>
+                    </div>
+                </div>
+                <div class="payment-timer">
+                    <span>Thời gian còn lại: </span>
+                    <span id="countdown">05:00</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancel-payment-btn">Hủy Thanh Toán</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cash Payment Modal -->
+    <div class="modal" id="cash-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content cash-modal-content">
+            <div class="modal-header">
+                <h3>💵 Thanh Toán Tiền Mặt</h3>
+                <button class="modal-close" id="cash-close" onclick="handleCancelCashPayment()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="cash-instruction">
+                    <span class="cash-icon">🏧</span>
+                    <p>Vui lòng nhét tiền vào khe nhận tiền của máy</p>
+                </div>
+
+                <div class="cash-amounts">
+                    <div class="cash-row">
+                        <span class="cash-label">Cần thanh toán:</span>
+                        <span class="cash-value" id="cash-price-display">0 ₫</span>
+                    </div>
+                    <div class="cash-row">
+                        <span class="cash-label">Đã nhét:</span>
+                        <span class="cash-value cash-inserted" id="cash-inserted-display">0 ₫</span>
+                    </div>
+                    <div class="cash-row" id="cash-remaining-row">
+                        <span class="cash-label">Còn thiếu:</span>
+                        <span class="cash-value cash-remaining" id="cash-remaining-display">0 ₫</span>
+                    </div>
+                    <div class="cash-row cash-change-row" id="cash-change-row" style="display:none">
+                        <span class="cash-label">Tiền thừa trả lại:</span>
+                        <span class="cash-value cash-change" id="cash-change-display">0 ₫</span>
+                    </div>
+                </div>
+
+                <div class="cash-progress-wrap">
+                    <div class="cash-progress-bar">
+                        <div class="cash-progress-fill" id="cash-progress-fill" style="width:0%"></div>
+                    </div>
+                    <span class="cash-progress-pct" id="cash-progress-pct">0%</span>
+                </div>
+
+                <div class="payment-status" id="cash-payment-status">
+                    <div class="status-waiting">
+                        <div class="pulse-ring"></div>
+                        <span>Đang chờ nhận tiền...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancel-cash-btn" onclick="handleCancelCashPayment()">Hủy</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div class="modal" id="success-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content success-modal-content">
+            <div class="success-animation">
+                <div class="checkmark-circle">
+                    <div class="checkmark"></div>
+                </div>
+            </div>
+            <h3>Thanh Toán Thành Công!</h3>
+            <p class="success-message">Cảm ơn bạn đã mua hàng</p>
+            <p class="success-order">Đơn hàng: <strong id="success-order-code">---</strong></p>
+            <p class="success-change" id="success-change" style="display:none">
+                Tiền thừa: <strong id="success-change-amount">0 ₫</strong>
+            </p>
+            <button class="btn-primary" id="success-close-btn">Tiếp Tục Mua Hàng</button>
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div class="toast" id="error-toast">
+        <span class="toast-icon">⚠️</span>
+        <span class="toast-message" id="toast-message"></span>
+    </div>
+
+    <!-- In Use Overlay -->
+    <div class="in-use-overlay" id="in-use-overlay" style="display: none;">
+        <div class="in-use-content">
+            <div class="in-use-icon">⚠️</div>
+            <h2>Hệ thống đang bận</h2>
+            <p>Máy bán hàng đang được sử dụng bởi một người khác.<br>Vui lòng đợi trong giây lát.</p>
+        </div>
+    </div>
+
+    <!-- Setup Required Overlay -->
+    <div class="in-use-overlay" id="setup-overlay" style="display: none;">
+        <div class="in-use-content" style="max-width: 500px;">
+            <div class="in-use-icon">⚙️</div>
+            <h2>Thiết lập thiết bị</h2>
+            <p>Vui lòng nhập thông tin định danh máy</p>
+
+            <div class="setup-box">
+                <div class="setup-field">
+                    <label>MACHINE ID (Số hiệu máy)</label>
+                    <input type="number" id="setup-machine-id" placeholder="Ví dụ: 2">
+                </div>
+                <div class="setup-field">
+                    <label>SECRET KEY (Mã bí mật)</label>
+                    <input type="text" id="setup-machine-key" placeholder="Ví dụ: T1">
+                </div>
+                <button class="checkout-btn checkout-qr" onclick="window.saveManualConfig()">
+                    <span class="btn-icon">💾</span> Lưu cấu hình
+                </button>
+            </div>
+
+            <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1rem;">
+                <button class="qty-btn" onclick="location.reload()" title="Thử lại" style="width: auto; padding: 0 1rem;">🔄</button>
+                <button class="qty-btn" onclick="window.clearConfig()" title="Xóa cấu hình" style="width: auto; padding: 0 1rem; color: #ff416c;">🗑️</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Socket.IO client (cần load trước websocket.js) -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <!-- App modules — theo đúng thứ tự phụ thuộc -->
+    <script src="js/env.js"></script> <!-- ⚙️ Biến môi trường (gitignored — xem env.example.js) -->
+    <script src="js/config.js"></script> <!-- ENV, API endpoints, CONFIG constants -->
+    <script src="js/api.js"></script> <!-- Tất cả fetch calls đến backend -->
+    <script src="js/ui.js"></script> <!-- Render products/cart, toast, clock -->
+    <script src="js/cart.js"></script> <!-- State & logic giỏ hàng -->
+    <script src="js/websocket.js"></script> <!-- Socket.IO payment real-time -->
+    <script src="js/payment.js"></script> <!-- Checkout flow, QR modal, polling -->
+    <script src="js/app.js"></script> <!-- Entry point: init & event listeners -->
+</body>
+
+</html>
