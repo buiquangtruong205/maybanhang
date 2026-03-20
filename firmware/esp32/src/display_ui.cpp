@@ -8,6 +8,11 @@
 #include "app_config.h"
 #include "config_manager.h"
 
+// Professional GFX Fonts
+#include <Fonts/FreeSansBold9pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>
+#include <Fonts/FreeSansBold12pt7b.h>
+
 namespace {
 
 constexpr uint16_t kScreenWidth = 240;
@@ -79,18 +84,25 @@ uint16_t resolveAccentColor() {
 // Drawing Helpers
 // =============================================
 
-void drawCenteredText(const String& text, int16_t y, uint8_t size, uint16_t color) {
+void drawCenteredText(const String& text, int16_t y, uint8_t size, uint16_t color, bool customFont = false) {
+    if (customFont) {
+        tft.setFont(&FreeSansBold9pt7b);
+        if (size > 1) tft.setFont(&FreeSansBold12pt7b);
+    } else {
+        tft.setFont(NULL);
+        tft.setTextSize(size);
+    }
+
     int16_t x1, y1;
     uint16_t width, height;
-    tft.setTextSize(size);
     tft.getTextBounds(text, 0, y, &x1, &y1, &width, &height);
     int16_t x = (kScreenWidth - static_cast<int16_t>(width)) / 2;
     if (x < 0) x = 0;
     
-    // Tiny shadow for text if size >= 2 for better depth
-    if (size >= 2 && color != COL_BLACK) {
-        tft.setCursor(x + 1, y + 1);
+    // Tiny shadow for custom fonts looks very premium
+    if (size >= 1 && color != COL_WHITE && color != COL_SHADOW) {
         tft.setTextColor(COL_SHADOW);
+        tft.setCursor(x + 1, y + 1);
         tft.print(text);
     }
     
@@ -186,12 +198,34 @@ void drawDivider(int16_t y, uint16_t color = COL_DIVIDER) {
 
 /** Improved status indicator icons */
 void drawStatusIcon(int16_t x, int16_t y, bool ok, const char* label) {
-    tft.fillRoundRect(x, y, 65, 18, 4, ok ? COL_SUCCESS : COL_LIGHTGREY);
+    uint16_t bg = ok ? COL_SUCCESS : 0xC618;
+    uint16_t dot = ok ? 0xA7E0 : COL_DARKGREY;
+    uint16_t border = ok ? 0x2E66 : 0x8410;
+
+    tft.fillRoundRect(x, y, 70, 20, 5, bg);
+    tft.drawRoundRect(x, y, 70, 20, 5, border);
+
+    tft.setFont(NULL); // Built-in for small status labels
     tft.setTextColor(COL_WHITE);
     tft.setTextSize(1);
-    tft.setCursor(x + 5, y + 5);
+    tft.setCursor(x + 6, y + 6);
     tft.print(label);
-    tft.fillCircle(x + 55, y + 9, 3, ok ? COL_WHITE : COL_DARKGREY);
+
+    tft.fillCircle(x + 60, y + 10, 4, dot);
+}
+
+void drawCheckIcon(int16_t cx, int16_t cy, uint16_t color) {
+    tft.drawLine(cx - 10, cy,     cx - 2, cy + 8,  color);
+    tft.drawLine(cx - 10, cy + 1, cx - 2, cy + 9,  color); // ticker
+    tft.drawLine(cx - 2,  cy + 8, cx + 12, cy - 6, color);
+    tft.drawLine(cx - 2,  cy + 9, cx + 12, cy - 5, color);
+}
+
+void drawCrossIcon(int16_t cx, int16_t cy, uint16_t color) {
+    tft.drawLine(cx - 9, cy - 9, cx + 9, cy + 9, color);
+    tft.drawLine(cx - 9, cy - 8, cx + 9, cy + 10, color);
+    tft.drawLine(cx + 9, cy - 9, cx - 9, cy + 9, color);
+    tft.drawLine(cx + 9, cy - 8, cx - 9, cy + 10, color);
 }
 
 // =============================================
@@ -204,8 +238,13 @@ bool canRenderQrPayload(const String& payload) {
 
 void drawQrFallback(const String& message) {
     drawCard(kQrCardX, kQrCardY, kQrCardSize, kQrCardSize, COL_WHITE, COL_ERROR);
-    drawCenteredText("QR KHONG KHA DUNG", 135, 2, COL_ERROR);
-    drawCenteredMultilineText(message, 170, 1, COL_BLACK, 3, 180, 18);
+    
+    // Warning Triangle
+    tft.fillTriangle(120, 100, 90, 150, 150, 150, COL_ERROR);
+    drawCenteredText("!", 138, 1, COL_WHITE, true);
+
+    drawCenteredText("QR KHONG KHA DUNG", 168, 1, COL_ERROR, true);
+    drawCenteredMultilineText(message, 190, 1, COL_TEXT_MUTED, 3, 180, 18);
 }
 
 void drawQr(const String& payload) {
@@ -248,8 +287,8 @@ void drawCommonHeader() {
     drawGradientRect(0, 0, kScreenWidth, 48, start, end);
     tft.drawFastHLine(0, 48, kScreenWidth, COL_DIVIDER);
 
-    // Title with high contrast
-    drawCenteredTextFitted(config_manager::getUiTitle(), 10, 2, COL_WHITE, kScreenWidth - 20);
+    // Title with high contrast (Custom Font)
+    drawCenteredText(config_manager::getUiTitle(), 28, 1, COL_WHITE, true);
 
     const String machineName = config_manager::getMachineName();
     const String deviceLabel = config_manager::getDeviceLabel();
@@ -261,7 +300,7 @@ void drawCommonHeader() {
     }
     
     if (subLine.length() > 0) {
-        drawCenteredTextFitted(subLine, 32, 1, COL_PLATINUM, kScreenWidth - 20);
+        drawCenteredText(subLine, 42, 1, COL_PLATINUM, false);
     }
 }
 
@@ -271,16 +310,9 @@ void drawCommonHeader() {
 
 void drawBalance(uint32_t balance) {
     if (balance > 0) {
-        // High-contrast Balance Card
         drawCard(12, 245, 216, 48, COL_WHITE, COL_ACCENT);
-        
-        tft.setTextColor(COL_TEXT_MAIN);
-        tft.setTextSize(2);
-        tft.setCursor(25, 262);
-        tft.print("TIEN: ");
-        tft.setTextColor(COL_PRIMARY);
-        tft.print(balance);
-        tft.print(" d");
+        String balStr = "SO DU: " + String(balance) + " VND";
+        drawCenteredText(balStr, 278, 1, COL_PRIMARY, true);
     }
 }
 
@@ -300,7 +332,7 @@ void init() {
     tftSpi.begin(esp32cfg::kTftSckPin, -1, esp32cfg::kTftMosiPin);
     tft.init(240, 320);
     tft.setRotation(0);
-    tft.invertDisplay(true); // Fix inverted colors for ST7789
+    tft.invertDisplay(false); // Disable inversion for true Light Mode
 
     if (esp32cfg::kTftBacklightPin >= 0) {
         pinMode(esp32cfg::kTftBacklightPin, OUTPUT);
@@ -318,14 +350,18 @@ void showBooting() {
     drawCenteredText("VENDING MACHINE", 100, 2, COL_PRIMARY);
     drawDivider(125);
 
-    drawCenteredText("DANG KHOI DONG", 145, 2, COL_ACCENT);
-    drawCenteredText("Vui long cho...", 175, 1, COL_TEXT_MUTED);
+    drawCenteredText("DANG KHOI DONG", 155, 1, COL_ACCENT, true);
+    drawCenteredText("Vui long cho...", 185, 1, COL_TEXT_MUTED, false);
 
-    // Modern loading dots
-    uint32_t t = millis() / 300;
-    tft.fillCircle(100, 205, 4, (t % 3 == 0) ? COL_ACCENT : COL_LIGHTGREY);
-    tft.fillCircle(120, 205, 4, (t % 3 == 1) ? COL_ACCENT : COL_LIGHTGREY);
-    tft.fillCircle(140, 205, 4, (t % 3 == 2) ? COL_ACCENT : COL_LIGHTGREY);
+    // Premium centered loading dots
+    constexpr int16_t kDotY = 220;
+    constexpr int16_t kDotRadius = 5;
+    constexpr int16_t kDotGap = 22;
+    uint32_t t = millis() / 350;
+    for (int i = 0; i < 3; i++) {
+        uint16_t col = (t % 3 == i) ? COL_ACCENT : COL_LIGHTGREY;
+        tft.fillCircle(109 - kDotGap + (i * kDotGap), kDotY, kDotRadius, col);
+    }
 }
 
 void showWifiConnecting(const char* ssid) {
@@ -357,29 +393,22 @@ void showHome(uint32_t balance, bool wifiOk) {
     drawStatusIcon(85, 55, true, "SERVER"); // For now assume backend ok if here
 
     // Main Greeting
-    drawCenteredText("CHAO MUNG", 95, 2, COL_PRIMARY);
+    drawCenteredText("XIN CHÀO", 100, 2, COL_PRIMARY, true);
 
     // Instructions Card
-    drawCard(12, 120, 216, 110, COL_WHITE, COL_SECONDARY);
+    drawCard(12, 125, 216, 105, COL_WHITE, COL_SECONDARY);
     
-    drawCenteredText("HUONG DAN", 132, 1, COL_TEXT_MUTED);
-    drawCenteredMultilineText(config_manager::getUiHomeLine1(), 150, 2, COL_TEXT_MAIN, 2, 200, 24);
-    drawCenteredMultilineText(config_manager::getUiHomeLine2(), 185, 1, COL_TEXT_MAIN, 2, 200, 18);
+    drawCenteredText("MỜI CHỌN MÓN", 145, 1, COL_TEXT_MUTED, true);
+    drawCenteredMultilineText(config_manager::getUiHomeLine1(), 175, 1, COL_TEXT_MAIN, 2, 200, 24);
+    drawCenteredMultilineText(config_manager::getUiHomeLine2(), 210, 1, COL_TEXT_MAIN, 2, 200, 18);
 
-    // Footer Help
+    // Footer Help with accent line
     int16_t footerY = 245;
     drawDivider(footerY);
-    
-    tft.setTextColor(COL_TEXT_MUTED);
-    tft.setTextSize(1);
-    tft.setCursor(15, footerY + 12);
-    tft.print("CHON MA: 01 - 99");
-    
-    tft.setCursor(15, footerY + 32);
-    tft.print("[#] Xac nhan");
-    
-    tft.setCursor(135, footerY + 32);
-    tft.print("[*] Xoa");
+    tft.drawFastHLine(20, footerY + 1, 200, COL_ACCENT);
+
+    drawCenteredText("CHON MA: 01 - 99", 270, 1, COL_TEXT_MUTED, true);
+    drawCenteredText("[#] XAC NHAN   [*] XOA", 295, 1, COL_PRIMARY, false);
 
     drawBalance(balance);
 }
@@ -388,32 +417,31 @@ void showInputSlot(const String& currentInput, uint32_t balance) {
     prepareCanvas(COL_BG);
     drawCommonHeader();
 
-    drawCenteredText("NHAP MA SAN PHAM", 70, 1, COL_TEXT_MUTED);
+    drawCenteredText("NHẬP MÃ SẢN PHẨM", 85, 1, COL_TEXT_MUTED, true);
 
-    // Modern Input Box with focus effect
-    drawCard(18, 90, 204, 75, COL_WHITE, COL_SECONDARY);
-    // Extra glow border inner
-    tft.drawRoundRect(19, 91, 202, 73, 9, COL_LIGHTGREY);
+    // Modern Input Box
+    drawCard(18, 105, 204, 75, COL_WHITE, COL_SECONDARY);
+    tft.drawRoundRect(19, 106, 202, 73, 9, COL_LIGHTGREY);
 
+    tft.setFont(&FreeSansBold12pt7b);
     tft.setTextColor(COL_PRIMARY);
-    tft.setTextSize(4);
+    tft.setTextSize(2);
 
-    String fittedInput = fitTextToWidth(currentInput, 4, 180);
     int16_t x1, y1;
     uint16_t w, h;
-    tft.getTextBounds(fittedInput, 0, 112, &x1, &y1, &w, &h);
+    tft.getTextBounds(currentInput, 0, 150, &x1, &y1, &w, &h);
     int16_t x = (kScreenWidth - static_cast<int16_t>(w)) / 2;
     if (x < 30) x = 30;
 
-    tft.setCursor(x, 112);
-    tft.print(fittedInput);
+    tft.setCursor(x, 150);
+    tft.print(currentInput);
 
-    // Blinking Cyber-cursor (Orange)
+    // Blinking Cyber-cursor
     if ((millis() / 500) % 2 == 0) {
-        tft.fillRect(x + w + 5, 110, 6, 30, COL_ACCENT);
+        tft.fillRect(x + w + 5, 125, 4, 35, COL_ACCENT);
     }
 
-    drawCenteredText("Bấm [#] để xác nhận", 185, 1, COL_TEXT_MUTED);
+    drawCenteredText("Bấm [#] để xác nhận", 210, 1, COL_TEXT_MUTED, false);
 
     drawBalance(balance);
 }
@@ -435,19 +463,19 @@ void showLoading(const String& line1, const String& line2) {
 void showPaymentQr(const String& orderId, const String& amountText, const String& qrPayload) {
     prepareCanvas(COL_BG);
 
-    // Gradient Header for Payment
-    drawGradientRect(0, 0, kScreenWidth, 50, resolveHeaderColorStart(), resolveHeaderColorEnd());
-    drawCenteredText("THANH TOÁN QR", 12, 2, COL_WHITE);
-    drawCenteredText("Đơn hàng #" + orderId, 34, 1, COL_PLATINUM);
+    // Gradient Header
+    drawGradientRect(0, 0, kScreenWidth, 52, resolveHeaderColorStart(), resolveHeaderColorEnd());
+    drawCenteredText("THANH TOÁN QR", 28, 1, COL_WHITE, true);
+    drawCenteredText("Đơn hàng #" + orderId, 46, 1, COL_PLATINUM, false);
 
-    // QR Code with clean white background
+    // QR Code
     drawQr(qrPayload);
 
     // Amount Area
-    drawCard(10, 260, 220, 50, COL_WHITE, COL_ACCENT);
-    drawCenteredMultilineText(amountText, 272, 2, COL_PRIMARY, 2, 200, 22);
+    drawCard(10, 260, 220, 52, COL_WHITE, COL_ACCENT);
+    drawCenteredMultilineText(amountText, 282, 1, COL_PRIMARY, 2, 200, 22);
     
-    drawCenteredText("CHO THANH TOAN...", 242, 1, COL_TEXT_MUTED);
+    drawCenteredText("CHỜ THANH TOÁN...", 242, 1, COL_TEXT_MUTED, true);
 }
 
 void showPaymentResult(const String& title, const String& detail, bool success);
@@ -477,15 +505,19 @@ void showCashPaymentProgress(const String& orderId, uint32_t total, uint32_t rec
         float pct = (float)received / (float)total;
         if (pct > 1.0) pct = 1.0;
         int16_t fillW = (int16_t)(pct * pbW);
-        if (fillW > 0) {
+        
+        if (fillW >= pbW) {
+            // Pulse effect for 100%
+            drawGradientRect(pbX, pbY, pbW, pbH, COL_SUCCESS, 0x67E0);
+        } else if (fillW > 0) {
             tft.fillRoundRect(pbX, pbY, fillW, pbH, 4, COL_SUCCESS);
         }
         
         String pctStr = String((int)(pct * 100)) + "%";
-        drawCenteredText(pctStr, 275, 2, COL_PRIMARY);
+        drawCenteredText(pctStr, 280, 1, COL_PRIMARY, true);
     }
 
-    drawCenteredText("Vui lòng đưa tiền vào khe", 300, 1, COL_TEXT_MUTED);
+    drawCenteredText("Vui long đưa tien vao khe", 305, 1, COL_TEXT_MUTED, false);
 }
 
 void showPaymentResult(const String& title, const String& detail, bool success) {
@@ -496,54 +528,52 @@ void showPaymentResult(const String& title, const String& detail, bool success) 
     
     drawCard(15, 60, 210, 200, cardColor, accentColor);
 
-    drawCenteredText(success ? "THÀNH CÔNG" : "THẤT BẠI", 85, 2, accentColor);
+    drawCenteredText(success ? "THANH CONG" : "THAT BAI", 95, 1, accentColor, true);
     
-    // Icon
+    // Real Icons instead of 'V'/'X'
     if (success) {
-        tft.fillCircle(120, 135, 25, COL_SUCCESS);
-        drawCenteredText("V", 137, 2, COL_WHITE);
+        tft.fillCircle(120, 145, 25, COL_SUCCESS);
+        drawCheckIcon(120, 142, COL_WHITE);
     } else {
-        tft.fillCircle(120, 135, 25, COL_ERROR);
-        drawCenteredText("X", 137, 2, COL_WHITE);
+        tft.fillCircle(120, 145, 25, COL_ERROR);
+        drawCrossIcon(120, 145, COL_WHITE);
     }
 
-    drawCenteredMultilineText(title, 185, 2, COL_TEXT_MAIN, 2, 190, 24);
-    drawCenteredMultilineText(detail, 215, 1, COL_TEXT_MUTED, 3, 190, 18);
+    drawCenteredMultilineText(title, 200, 1, COL_TEXT_MAIN, 2, 190, 24);
+    drawCenteredMultilineText(detail, 230, 1, COL_TEXT_MUTED, 3, 190, 18);
     
-    drawCenteredText("Bấm bất kỳ để tiếp tục", 285, 1, COL_LIGHTGREY);
+    drawCenteredText("Bam bat ky de tiep tuc", 300, 1, COL_LIGHTGREY, false);
 }
 
 void showError(const String& title, const String& detail) {
     prepareCanvas(COL_BG);
-
     drawCard(15, 65, 210, 195, COL_WHITE, COL_ERROR);
 
     // Alert Icon
-    tft.fillTriangle(120, 85, 95, 130, 145, 130, COL_ERROR);
-    drawCenteredText("!", 108, 2, COL_WHITE);
+    tft.fillTriangle(120, 95, 95, 140, 145, 140, COL_ERROR);
+    drawCenteredText("!", 128, 1, COL_WHITE, true);
 
-    drawCenteredMultilineText(title, 150, 2, COL_TEXT_MAIN, 2, 190, 24);
-    drawCenteredMultilineText(detail, 195, 1, COL_TEXT_MUTED, 3, 190, 18);
+    drawCenteredMultilineText(title, 165, 1, COL_TEXT_MAIN, 2, 190, 24);
+    drawCenteredMultilineText(detail, 205, 1, COL_TEXT_MUTED, 3, 190, 18);
     
-    drawCenteredText("Nhấn [#] để quay lại", 282, 1, COL_LIGHTGREY);
+    drawCenteredText("Nhấn [#] để quay lại", 290, 1, COL_LIGHTGREY, false);
 }
 
 void showMaintenance(const String& reason) {
     prepareCanvas(COL_BG);
-
     drawCard(15, 45, 210, 235, COL_WHITE, COL_PRIMARY);
 
-    drawCenteredText("BẢO TRÌ HỆ THỐNG", 70, 2, COL_PRIMARY);
+    drawCenteredText("BẢO TRÌ HỆ THỐNG", 75, 1, COL_PRIMARY, true);
     
     // Icon
     tft.fillCircle(120, 120, 20, COL_PLATINUM);
     tft.drawCircle(120, 120, 21, COL_PRIMARY);
     tft.drawCircle(120, 120, 8, COL_PRIMARY);
 
-    drawCenteredMultilineText(reason, 160, 2, COL_TEXT_MAIN, 4, 190, 24);
+    drawCenteredMultilineText(reason, 170, 1, COL_TEXT_MAIN, 4, 190, 24);
 
-    drawCenteredText("Vui lòng quay lại sau", 235, 1, COL_TEXT_MUTED);
-    drawCenteredText("SERVICE MAINTENANCE", 305, 1, COL_LIGHTGREY);
+    drawCenteredText("Vui lòng quay lại sau", 245, 1, COL_TEXT_MUTED, false);
+    drawCenteredText("SERVICE MAINTENANCE", 310, 1, COL_LIGHTGREY, false);
 }
 
 }  // namespace displayui
