@@ -104,9 +104,9 @@ async function loadProducts() {
         // 1. Kiểm tra trạng thái máy
         const statusData = await apiFetchMachineStatus();
         if (statusData.success) {
-            const status = statusData.data.status;
+            const status = (statusData.data.status || '').toLowerCase();
             if (status !== 'active' && status !== 'online') {
-                renderMachineUnavailable(status);
+                renderMachineUnavailable(statusData.data.status); // Keep original case for display
                 return;
             }
         }
@@ -144,15 +144,29 @@ async function loadProducts() {
 
             // [NEW] Khởi tạo WebSocket đồng bộ máy nếu chưa có
             if (ENV.MACHINE_ID) {
-                connectMachineSocket(ENV.MACHINE_ID, (data) => {
-                    // data: {slot_code: 'A1', new_stock: 5, product_id: 123}
-                    const pIndex = products.findIndex(p => p.slot_code === data.slot_code);
-                    if (pIndex !== -1) {
-                        console.log(`🔄 Updating stock for ${data.slot_code}: ${products[pIndex].stock} -> ${data.new_stock}`);
-                        products[pIndex].stock = data.new_stock;
-                        renderProducts(products); // Re-render UI
+                connectMachineSocket(
+                    ENV.MACHINE_ID, 
+                    // 1. Stock Update
+                    (data) => {
+                        const pIndex = products.findIndex(p => p.slot_code === data.slot_code);
+                        if (pIndex !== -1) {
+                            console.log(`🔄 Updating stock for ${data.slot_code}: ${products[pIndex].stock} -> ${data.new_stock}`);
+                            products[pIndex].stock = data.new_stock;
+                            renderProducts(products); // Re-render UI
+                        }
+                    },
+                    // 2. [NEW] Payment Update (Cash)
+                    (data) => {
+                        // data: {order_id: 123, status: 'completed', paid: 10000, remaining: 0, denomination: 10000}
+                        console.log('💰 Real-time Cash Update received:', data);
+                        if (typeof updateCashModalUI === 'function') {
+                            updateCashModalUI(data.paid, data.price || 0, data.remaining, data.change || 0, data.status === 'completed');
+                        }
+                        if (data.status === 'completed' && typeof handleCashPaymentSuccess === 'function') {
+                            handleCashPaymentSuccess(data.order_id, data.change || 0);
+                        }
                     }
-                });
+                );
             }
 
             renderProducts(products);

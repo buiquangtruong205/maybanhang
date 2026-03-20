@@ -16,19 +16,19 @@ uno::MotorController stepper(unopins::kStepperIn1, unopins::kStepperIn2, unopins
 uno::BillDetector billScanner(unopins::kColorS0, unopins::kColorS1, unopins::kColorS2, unopins::kColorS3, unopins::kColorOut);
 uno::GateManager billGate(unopins::kServoPin);
 
-void handleDispenseCommand(const String& payload) {
+void handleDispenseCommand(const char* payload) {
     uno::dispense_controller::run(payload);
 }
 
-void handleTestMotorCommand(const String& payload) {
+void handleTestMotorCommand(const char* payload) {
     uno::hardware_manager::testMotor(payload);
 }
 
-void handleTestServoCommand(const String& payload) {
+void handleTestServoCommand(const char* payload) {
     uno::hardware_manager::testServo(payload);
 }
 
-void handleStatusCommand(const String& payload) {
+void handleStatusCommand(const char* payload) {
     uno::hardware_manager::printStatus(payload);
 }
 
@@ -63,6 +63,7 @@ void loop() {
     // Pump communication and hardware updates
     uno::serial_protocol::pump();
     uno::hardware_manager::update();
+    stepper.tick();
     
     delay(2);
 }

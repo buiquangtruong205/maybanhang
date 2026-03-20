@@ -38,8 +38,13 @@ def _validate_machine_key(machine_key):
     if not machine:
         return None, f'Invalid machine key: {_mask_machine_key(machine_key)}. Access denied.', 403
 
-    if machine.status not in {"active", "online"}:
+    if machine.status.lower() not in {"active", "online"}:
         return None, f'Machine {machine.machine_id} is inactive (status: {machine.status}). Access denied.', 403
+
+    # Check Device Identity status (Revocation check)
+    identity = DeviceIdentity.query.get(machine.machine_id)
+    if identity and identity.status == 'revoked':
+        return None, f'Device identity for Machine {machine.machine_id} has been REVOKED. Access denied.', 403
 
     return machine, None, None
 

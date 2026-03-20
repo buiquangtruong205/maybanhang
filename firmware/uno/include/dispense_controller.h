@@ -9,7 +9,7 @@ class MotorController;
 namespace dispense_controller {
 
 void init(MotorController* motor);
-void run(const String& payload);
+void run(const char* payload);
 
 }  // namespace dispense_controller
 }  // namespace uno

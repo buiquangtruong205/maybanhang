@@ -16,16 +16,16 @@ char keys[ROWS][COLS] = {
 };
 
 byte rowPins[ROWS] = {
-    esp32cfg::kKeypadRow1,
-    esp32cfg::kKeypadRow2,
-    esp32cfg::kKeypadRow3,
-    esp32cfg::kKeypadRow4
+    esp32cfg::kKeypadRow1, // 12
+    esp32cfg::kKeypadRow2, // 33
+    esp32cfg::kKeypadRow3, // 25
+    esp32cfg::kKeypadRow4  // 27
 };
 
 byte colPins[COLS] = {
-    esp32cfg::kKeypadCol1,
-    esp32cfg::kKeypadCol2,
-    esp32cfg::kKeypadCol3
+    esp32cfg::kKeypadCol1, // 14
+    esp32cfg::kKeypadCol2, // 13
+    esp32cfg::kKeypadCol3  // 26
 };
 
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);

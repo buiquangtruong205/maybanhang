@@ -64,9 +64,9 @@ function disconnectPaymentSocket() {
  */
 
 /**
- * Kết nối WebSocket đến /machine namespace để đồng bộ stock/status.
+ * Kết nối WebSocket đến /machine namespace để đồng bộ stock/status/payment.
  */
-function connectMachineSocket(machineId, onStockUpdate) {
+function connectMachineSocket(machineId, onStockUpdate, onPaymentUpdate) {
     if (machineSocket) return; // Tránh kết nối lặp lại
 
     try {
@@ -82,16 +82,16 @@ function connectMachineSocket(machineId, onStockUpdate) {
             machineSocket.emit('join', { machine_id: machineId });
         });
 
-        machineSocket.on('stock_update', (data) => {
-            console.log('📦 Real-time Stock Update:', data);
-            if (typeof onStockUpdate === 'function') {
-                onStockUpdate(data);
-            }
-        });
-
-        machineSocket.on('machine_status_update', (data) => {
+        machineSocket.on('status_update', (data) => {
             console.log('🖥️ Machine Status Change:', data);
             // Có thể dùng để hiển thị thông báo bảo trì, v.v.
+        });
+
+        machineSocket.on('payment_status_update', (data) => {
+            console.log('💰 Cash Payment Update:', data);
+            if (typeof onPaymentUpdate === 'function') {
+                onPaymentUpdate(data);
+            }
         });
 
         machineSocket.on('disconnect', () => {

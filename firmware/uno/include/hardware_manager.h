@@ -12,9 +12,10 @@ namespace hardware_manager {
 
 void init(MotorController* motor, BillDetector* detector, GateManager* gate);
 void update();
-void testMotor(const String& payload);
-void testServo(const String& payload);
-void printStatus(const String& payload = "");
+void testMotor(const char* payload);
+void testServo(const char* payload);
+void printStatus(const char* payload = "");
+void resetProcessingState();
 
 }  // namespace hardware_manager
 }  // namespace uno

@@ -9,6 +9,7 @@ from app.schemas import (
 )
 from app.utils import token_required
 from app.utils.mqtt import send_machine_command
+from app.websocket import emit_admin_device_auth_update
 
 device_bp = Blueprint('device', __name__)
 
@@ -128,11 +129,38 @@ def revoke_identity(current_user, machine_id):
     identity = DeviceIdentity.query.get_or_404(machine_id)
     identity.status = 'revoked'
     identity.revoked_at = datetime.utcnow()
+    
+    # Đồng bộ: Thu hồi tất cả các phiên làm việc hiện tại của máy này
+    DeviceSession.query.filter_by(machine_id=machine_id, is_revoked=False).update(
+        {DeviceSession.is_revoked: True}, synchronize_session=False
+    )
+    
     db.session.commit()
+    
+    # Kích hoạt UI Reload
+    emit_admin_device_auth_update(machine_id)
     
     return jsonify({
         'success': True,
         'message': 'Device identity revoked successfully'
+    })
+
+
+@device_bp.route('/devices/identity/<int:machine_id>/restore', methods=['PUT'])
+@token_required
+def restore_identity(current_user, machine_id):
+    """Restore a revoked device identity"""
+    identity = DeviceIdentity.query.get_or_404(machine_id)
+    identity.status = 'active'
+    identity.revoked_at = None
+    db.session.commit()
+    
+    # Kích hoạt UI Reload
+    emit_admin_device_auth_update(machine_id)
+    
+    return jsonify({
+        'success': True,
+        'message': 'Device identity restored successfully'
     })
 
 
@@ -200,7 +228,17 @@ def revoke_session(current_user, session_id):
     """Revoke a device session"""
     session = DeviceSession.query.get_or_404(session_id)
     session.is_revoked = True
+    
+    # Đồng bộ: Khi thu hồi một phiên, cũng Thu hồi luôn định danh máy để ngăn tự đăng ký lại
+    identity = DeviceIdentity.query.get(session.machine_id)
+    if identity:
+        identity.status = 'revoked'
+        identity.revoked_at = datetime.utcnow()
+        
     db.session.commit()
+    
+    # Kích hoạt UI Reload
+    emit_admin_device_auth_update(session.machine_id)
     
     return jsonify({
         'success': True,
@@ -248,6 +286,3 @@ def get_device_logs(current_user):
             'pages': pagination.pages
         }
     })
-
-
-

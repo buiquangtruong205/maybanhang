@@ -17,6 +17,24 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+// Format seconds to Vietnamese Uptime format (e.g. 1h 20p 30s)
+function formatUptime(seconds) {
+    if (seconds === 0 || !seconds) return '-';
+    
+    let d = Math.floor(seconds / (3600*24));
+    let h = Math.floor(seconds % (3600*24) / 3600);
+    let m = Math.floor(seconds % 3600 / 60);
+    let s = Math.floor(seconds % 60);
+
+    let parts = [];
+    if (d > 0) parts.push(`${d}n`); // n = ngày
+    if (h > 0) parts.push(`${h}h`); // h = giờ
+    if (m > 0) parts.push(`${m}p`); // p = phút
+    if (s > 0 || parts.length === 0) parts.push(`${s}s`); // s = giây
+    
+    return parts.join(' ');
+}
+
 // Stub function for removed Firmware OTA feature
 // Load Firmware Updates
 async function loadFirmware() {
@@ -208,6 +226,25 @@ function showApp() {
     document.getElementById('currentUser').textContent = `👤 ${currentUser?.username || 'User'}`;
     loadAllData();
     initAdminWebSocket();
+    startUptimeTicker();
+}
+
+// Global ticker for real-time uptime
+let uptimeTickerInterval = null;
+function startUptimeTicker() {
+    if (uptimeTickerInterval) return;
+    uptimeTickerInterval = setInterval(() => {
+        let changed = false;
+        machinesCache.forEach(m => {
+            if (m.status && m.status.toUpperCase() === 'ONLINE') {
+                m.uptime = (m.uptime || 0) + 1;
+                changed = true;
+            }
+        });
+        if (changed) {
+            renderMachines(machinesCache);
+        }
+    }, 1000);
 }
 
 // Tab switching
@@ -239,15 +276,18 @@ function switchSecurityTab(tabName) {
 
 // Load all data
 async function loadAllData() {
+    // 1. Tải các bảng danh mục (Masters) trước để làm cache cho các bảng khác
+    await loadMachines();
+    await loadProducts();
+    await loadSlots();
+    await loadUsers();
+
+    // 2. Tải các dữ liệu còn lại (có thể song song)
     await Promise.all([
         loadStats(),
-        loadMachines(),
-        loadProducts(),
-        loadSlots(),
         loadOrders(),
         loadTransactions(),
         loadFirmware(),
-        loadUsers(),
         loadAdminLogs()
     ]);
 
@@ -387,8 +427,9 @@ function renderMachines(machines) {
             <td class="id-column">${m.machine_id}</td>
             <td>${m.name}</td>
             <td>${m.location || '-'}</td>
-            <td class="table-align-center"><span class="status status-${wifiClass}">${m.wifi_signal || (m.wifi_status === 'connected' ? 'ON' : 'OFF')}</span></td>
-            <td class="table-align-center"><code>${m.uptime || '-'}</code></td>
+            <td class="table-align-center"><span class="status status-${wifiClass}">${m.wifi_ssid || m.wifi_signal || (m.wifi_status === 'connected' ? 'ON' : 'DISCONNECT')}</span></td>
+            <td class="table-align-center"><span class="rssi-badge">${m.rssi != null ? m.rssi + ' dBm' : '-'}</span></td>
+            <td class="table-align-center"><code>${formatUptime(m.uptime)}</code></td>
             <td class="table-align-center"><span class="status status-${statusClass}">${m.status}</span></td>
             <td class="table-align-center">
                 <div class="control-actions">
@@ -451,8 +492,8 @@ function renderProducts(products) {
 function renderSlots(slots) {
     const tbody = document.getElementById('slotsTable');
     tbody.innerHTML = slots.map(s => {
-        const machine = machinesCache.find(m => m.machine_id === s.machine_id);
-        const product = productsCache.find(p => p.product_id === s.product_id);
+        const machine = machinesCache.find(m => m.machine_id == s.machine_id);
+        const product = productsCache.find(p => p.product_id == s.product_id);
         const productName = product?.product_name || product?.name || '-';
         const itemJson = escapeHtml(JSON.stringify(s));
         return `
@@ -483,9 +524,9 @@ function renderOrders(orders) {
     });
 
     tbody.innerHTML = sortedOrders.map(o => {
-        const product = productsCache.find(p => p.product_id === o.product_id);
+        const product = productsCache.find(p => p.product_id == o.product_id);
         const productName = product?.product_name || product?.name || o.product_id;
-        const slot = slotsCache.find(s => s.slot_id === o.slot_id);
+        const slot = slotsCache.find(s => s.slot_id == o.slot_id);
         return `
             <tr>
                 <td class="id-column">${o.order_id}</td>
@@ -522,7 +563,7 @@ function renderAdminLogs(logs) {
     tbody.innerHTML = logs.map(l => {
         let userDisplay = l.user_id || 'Khách/Hệ thống';
         if (l.user_id) {
-            const user = usersCache.find(u => u.user_id === l.user_id);
+            const user = usersCache.find(u => u.user_id == l.user_id);
             if (user) userDisplay = `${user.username} (${l.user_id})`;
         }
 
@@ -550,10 +591,21 @@ function renderAdminLogs(logs) {
 
 // Action handlers for new features
 async function revokeDeviceIdentity(machineId) {
-    if (!confirm('Bạn có chắc muốn thu hồi định danh thiết bị này?')) return;
+    if (!confirm('Bạn có chắc muốn THU HỒI định danh thiết bị này?\n\nMáy sẽ bị ngắt kết nối với server ngay lập tức.')) return;
     const result = await apiCall(`/devices/identity/${machineId}/revoke`, 'PUT');
     if (result.success) {
         showToast('Đã thu hồi định danh thiết bị!', 'success');
+        loadDeviceIdentities();
+    } else {
+        showToast(result.message || 'Có lỗi xảy ra', 'error');
+    }
+}
+
+async function restoreDeviceIdentity(machineId) {
+    if (!confirm('Bạn có muốn KHÔI PHỤC định danh cho thiết bị này?\n\nMáy sẽ có thể kết nối lại bình thường.')) return;
+    const result = await apiCall(`/devices/identity/${machineId}/restore`, 'PUT');
+    if (result.success) {
+        showToast('Đã khôi phục định danh thiết bị! ✅', 'success');
         loadDeviceIdentities();
     } else {
         showToast(result.message || 'Có lỗi xảy ra', 'error');
@@ -718,7 +770,7 @@ function getFormFields(type, item) {
                 <div class="form-group">
                     <label>Máy bán hàng</label>
                     <select name="machine_id" required>
-                        ${machinesCache.map(m => `<option value="${m.machine_id}" ${item?.machine_id === m.machine_id ? 'selected' : ''}>${m.name}</option>`).join('')}
+                        ${machinesCache.map(m => `<option value="${m.machine_id}" ${item?.machine_id == m.machine_id ? 'selected' : ''}>${m.name}</option>`).join('')}
                     </select>
                 </div>
                 <div class="form-group">
@@ -729,7 +781,7 @@ function getFormFields(type, item) {
                     <label>Sản phẩm</label>
                     <select name="product_id">
                         <option value="">-- Không có --</option>
-                        ${productsCache.map(p => `<option value="${p.product_id}" ${item?.product_id === p.product_id ? 'selected' : ''}>${p.product_name || p.name}</option>`).join('')}
+                        ${productsCache.map(p => `<option value="${p.product_id}" ${item?.product_id == p.product_id ? 'selected' : ''}>${p.product_name || p.name}</option>`).join('')}
                     </select>
                 </div>
                 <div class="form-group">
@@ -1474,16 +1526,19 @@ async function loadDeviceLogs() {
 function renderDeviceLogs(logs) {
     const tbody = document.getElementById('deviceLogsTable');
     if (!tbody) return;
-    tbody.innerHTML = logs.map(l => `
-        <tr>
-            <td class="id-column">${l.log_id}</td>
-            <td class="table-align-center">#${l.machine_id}</td>
-            <td class="table-align-center"><span class="status status-${l.level === 'error' ? 'inactive' : (l.level === 'warning' ? 'warning' : 'active')}">${l.level}</span></td>
-            <td>${escapeHtml(l.message)}</td>
-            <td class="table-align-center"><code>${JSON.stringify(l.data)}</code></td>
-            <td class="table-align-center">${formatDate(l.timestamp)}</td>
-        </tr>
-    `).join('');
+    tbody.innerHTML = logs.map(l => {
+        const dataStr = (l.data && Object.keys(l.data).length > 0) ? JSON.stringify(l.data) : '-';
+        return `
+            <tr>
+                <td class="id-column">${l.log_id}</td>
+                <td class="table-align-center">#${l.machine_id}</td>
+                <td class="table-align-center"><span class="status status-${l.level === 'error' ? 'inactive' : (l.level === 'warning' ? 'warning' : 'active')}">${l.level}</span></td>
+                <td>${escapeHtml(l.message)}</td>
+                <td class="table-align-center"><code class="data-json">${dataStr}</code></td>
+                <td class="table-align-center">${formatDate(l.created_at)}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 async function loadDeviceIdentities() {
@@ -1497,17 +1552,22 @@ function renderDeviceIdentity(identities) {
     const tbody = document.getElementById('deviceIdentityTable');
     if (!tbody) return;
     tbody.innerHTML = identities.map(i => {
-        const statusClass = i.status === 'active' ? 'active' : 'inactive';
+        const isRevoked = i.status === 'revoked';
+        const statusClass = isRevoked ? 'inactive' : 'active';
+        const actionButton = isRevoked 
+            ? `<button class="btn btn-success btn-sm" onclick="restoreDeviceIdentity(${i.machine_id})">Khôi phục</button>`
+            : `<button class="btn btn-delete btn-sm" onclick="revokeDeviceIdentity(${i.machine_id})">Thu hồi</button>`;
+            
         return `
             <tr>
                 <td class="id-column">${i.machine_id}</td>
                 <td class="table-align-center"><code>${i.mac_address || '-'}</code></td>
-                <td class="table-align-center"><code>${i.fingerprint || '-'}</code></td>
+                <td class="table-align-center"><code>${i.cert_fingerprint || i.fingerprint || '-'}</code></td>
                 <td class="table-align-center"><span class="status status-${statusClass}">${i.status}</span></td>
-                <td class="table-align-center">${formatDate(i.issued_at)}</td>
+                <td class="table-align-center">${formatDate(i.provisioned_at || i.issued_at)}</td>
                 <td class="table-align-center">
                     <div class="actions">
-                        <button class="btn btn-delete btn-sm" onclick="revokeDeviceIdentity(${i.machine_id})">Thu hồi</button>
+                        ${actionButton}
                     </div>
                 </td>
             </tr>
@@ -1527,18 +1587,23 @@ function renderDeviceSessions(sessions) {
     if (!tbody) return;
     tbody.innerHTML = sessions.map(s => {
         const isExpired = new Date(s.expires_at) < new Date();
-        const statusClass = (s.status === 'active' && !isExpired) ? 'active' : 'inactive';
+        const isActive = !s.is_revoked && !isExpired;
+        const statusClass = isActive ? 'active' : 'inactive';
+        const statusText = s.is_revoked ? 'Đã thu hồi' : (isExpired ? 'Hết hạn' : 'Đang chạy');
         return `
             <tr>
-                <td class="id-column">${(s.session_id || '').toString().substring(0, 8)}...</td>
+                <td class="id-column">#${s.session_id}</td>
                 <td class="table-align-center">#${s.machine_id}</td>
                 <td class="table-align-center"><code>${s.ip_address || '-'}</code></td>
                 <td class="table-align-center">${formatDate(s.issued_at)}</td>
                 <td class="table-align-center">${formatDate(s.expires_at)}</td>
-                <td class="table-align-center"><span class="status status-${statusClass}">${isExpired ? 'Hết hạn' : s.status}</span></td>
+                <td class="table-align-center"><span class="status status-${statusClass}">${statusText}</span></td>
                 <td class="table-align-center">
                     <div class="actions">
-                        <button class="btn btn-delete btn-sm" onclick="revokeSession('${s.session_id}')">Thu hồi</button>
+                        ${s.is_revoked 
+                            ? '<span class="status-badge" style="background:rgba(255,255,255,0.05); color:var(--text-muted); padding:4px 8px; border-radius:6px; font-size:11px;">N/A</span>' 
+                            : `<button class="btn btn-delete btn-sm" onclick="revokeSession('${s.session_id}')">Thu hồi</button>`
+                        }
                     </div>
                 </td>
             </tr>
@@ -1561,6 +1626,8 @@ function initAdminWebSocket() {
 
         adminSocket.on('connect', () => {
             console.log('✅ Admin WebSocket connected');
+            // Subscribe to global admin room to receive all events
+            adminSocket.emit('subscribe_admin');
         });
 
         // 1. Live Device Logs
@@ -1600,11 +1667,42 @@ function initAdminWebSocket() {
         adminSocket.on('admin_machine_status', (data) => {
             console.log('🖥️ Machine Status:', data);
             // Update machine in cache and re-render
-            const mIndex = machinesCache.findIndex(m => m.machine_id === data.machine_id);
+            const mIndex = machinesCache.findIndex(m => m.machine_id == data.machine_id);
             if (mIndex !== -1) {
-                machinesCache[mIndex] = { ...machinesCache[mIndex], ...data };
+                // Determine WiFi status more robustly
+                const rssi = data.rssi !== undefined ? data.rssi : data.wifi_rssi;
+                const wifi_status = (rssi !== null && rssi !== undefined) ? 'connected' : 'disconnected';
+                
+                // Map fields to match internal Machine data structure
+                const update = {
+                    ...data,
+                    wifi_ssid: data.wifi_signal || data.wifi_ssid || machinesCache[mIndex].wifi_ssid,
+                    wifi_status: wifi_status,
+                    rssi: rssi
+                };
+                
+                machinesCache[mIndex] = { ...machinesCache[mIndex], ...update };
                 renderMachines(machinesCache);
             }
+        });
+
+        // 4. Live Stock Updates
+        adminSocket.on('admin_stock_update', (data) => {
+            console.log('📦 Stock Update:', data);
+            // Update slot in cache if exists
+            const sIndex = slotsCache.findIndex(s => s.slot_id == data.slot_id);
+            if (sIndex !== -1) {
+                slotsCache[sIndex].stock = data.new_stock;
+                renderSlots(slotsCache);
+            }
+        });
+
+        // 5. Live Device Auth Updates (Revoke/Restore)
+        adminSocket.on('admin_device_auth_update', (data) => {
+            console.log('🔒 Device Auth Update:', data);
+            // Tự động tải lại 2 bảng để đồng bộ dữ liệu
+            loadDeviceIdentities();
+            loadDeviceSessions();
         });
 
         adminSocket.on('disconnect', () => {

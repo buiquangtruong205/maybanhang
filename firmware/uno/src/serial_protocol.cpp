@@ -1,6 +1,7 @@
 #include "serial_protocol.h"
 
 #include "protocol.h"
+#include "hardware_manager.h"
 
 namespace uno {
 namespace serial_protocol {
@@ -11,113 +12,104 @@ ActionCallback dispenseCallback = nullptr;
 ActionCallback testMotorCallback = nullptr;
 ActionCallback testServoCallback = nullptr;
 ActionCallback statusCallback = nullptr;
-String inboundFrame;
+const int kMaxFrameLen = 64;
+char inboundBuffer[kMaxFrameLen];
+int inboundPos = 0;
 
-void printFormatted(const char* format, const String& value) {
-    // char buffer[96];
-    // snprintf(buffer, sizeof(buffer), format, value.c_str());
-    // Serial.println(buffer);
+void printFormatted(const char* prefix, const char* value) {
+    Serial.print(prefix);
+    Serial.println(value);
 }
 
-void printFormatted(const char* format, const String& first, const String& second) {
-    // char buffer[128];
-    // snprintf(buffer, sizeof(buffer), format, first.c_str(), second.c_str());
-    // Serial.println(buffer);
+void printFormatted(const char* prefix, const char* first, const char* second) {
+    Serial.print(prefix);
+    Serial.print(first);
+    Serial.print(":");
+    Serial.println(second);
 }
 
-void handleCommand(const String& frame) {
-    String normalized = frame;
-    normalized.trim();
-    String upper = normalized;
-    upper.toUpperCase();
+void handleCommand(char* frame) {
+    // Basic normalization: trim right
+    int len = strlen(frame);
+    while (len > 0 && isspace(frame[len-1])) {
+        frame[--len] = '\0';
+    }
 
-    if (frame.startsWith("CMD:PING:")) {
-        Serial.println("[SYSTEM] Uno is ALIVE (responding to ESP32)");
+    // Convert to uppercase for comparison
+    char upper[kMaxFrameLen];
+    strncpy(upper, frame, kMaxFrameLen);
+    for (int i = 0; upper[i]; i++) upper[i] = toupper(upper[i]);
+
+    // 1. Protocol Commands (CMD:...)
+    if (strncmp(upper, "CMD:PING:", 9) == 0) {
+        Serial.println(F("[SERIAL] PING received"));
         sendEvent("PONG", "UNO");
         return;
     }
 
-    if (frame.startsWith("CMD:DISPENSE:")) {
-        printFormatted("[SERIAL] RX protocol DISPENSE: %s", frame);
-        if (dispenseCallback != nullptr) {
-            dispenseCallback(frame.substring(String("CMD:DISPENSE:").length()));
-        }
+    if (strncmp(upper, "CMD:DISPENSE:", 13) == 0) {
+        printFormatted("[SERIAL] RX DISPENSE: ", frame + 13);
+        if (dispenseCallback != nullptr) dispenseCallback(frame + 13);
         return;
     }
 
-    if (frame.startsWith("CMD:TEST_MOTOR:")) {
-        printFormatted("[SERIAL] RX protocol TEST_MOTOR: %s", frame);
+    if (strncmp(upper, "CMD:TEST_MOTOR:", 15) == 0) {
+        printFormatted("[SERIAL] RX TEST_MOTOR: ", frame + 15);
+        if (testMotorCallback != nullptr) testMotorCallback(frame + 15);
+        return;
+    }
+
+    if (strncmp(upper, "CMD:TEST_SERVO:", 15) == 0) {
+        printFormatted("[SERIAL] RX TEST_SERVO: ", frame + 15);
+        if (testServoCallback != nullptr) testServoCallback(frame + 15);
+        return;
+    }
+
+    // 2. Direct / Debug Commands
+    if (strcmp(upper, "HELP") == 0) {
+        Serial.println(F("[UNO] Commands: HELP | STATUS | PING | IDLE | MOTOR | SERVO | PAY"));
+        return;
+    }
+
+    if (strcmp(upper, "STATUS") == 0) {
+        if (statusCallback != nullptr) statusCallback("");
+        return;
+    }
+
+    if (strcmp(upper, "PING") == 0) {
+        sendEvent("PONG", "DIRECT");
+        return;
+    }
+
+    if (strncmp(upper, "MOTOR", 5) == 0) {
         if (testMotorCallback != nullptr) {
-            testMotorCallback(frame.substring(String("CMD:TEST_MOTOR:").length()));
-        }
-        return;
-    }
-
-    if (frame.startsWith("CMD:TEST_SERVO:")) {
-        printFormatted("[SERIAL] RX protocol TEST_SERVO: %s", frame);
-        if (testServoCallback != nullptr) {
-            testServoCallback(frame.substring(String("CMD:TEST_SERVO:").length()));
-        }
-        return;
-    }
-
-    if (upper == "HELP") {
-        Serial.println("[UNO TEST] Commands:");
-        Serial.println("  HELP");
-        Serial.println("  STATUS");
-        Serial.println("  PING");
-        Serial.println("  DISPENSE A1");
-        Serial.println("  TEST MOTOR");
-        Serial.println("  TEST SERVO");
-        return;
-    }
-
-    if (upper == "STATUS") {
-        if (statusCallback != nullptr) {
-            statusCallback("");
-        }
-        return;
-    }
-
-    if (upper == "PING") {
-        Serial.println("[SERIAL] RX direct PING");
-        sendEvent("PONG", "UNO_DIRECT");
-        return;
-    }
-
-    if (upper.startsWith("DISPENSE")) {
-        if (dispenseCallback != nullptr) {
-            String payload = normalized.length() > 8 ? normalized.substring(8) : "";
-            payload.trim();
-            if (payload.length() == 0) payload = "standard|A1";
-            else if (payload.indexOf('|') < 0) payload = "standard|" + payload;
-            printFormatted("[SERIAL] RX direct DISPENSE: %s", payload);
-            dispenseCallback(payload);
-        }
-        return;
-    }
-
-    if (upper.startsWith("TEST MOTOR")) {
-        if (testMotorCallback != nullptr) {
-            String payload = normalized.length() > 10 ? normalized.substring(10) : "";
-            payload.trim();
-            if (payload.length() == 0) payload = "standard|TEST";
-            else if (payload.indexOf('|') < 0) payload = "standard|" + payload;
-            printFormatted("[SERIAL] RX direct TEST MOTOR: %s", payload);
+            char* payload = frame + 5;
+            while (*payload && isspace(*payload)) payload++;
             testMotorCallback(payload);
         }
         return;
     }
 
-    if (upper.startsWith("TEST SERVO")) {
-        if (testServoCallback != nullptr) {
-            Serial.println("[SERIAL] RX direct TEST SERVO");
-            testServoCallback("DIRECT");
+    if (strncmp(upper, "SERVO", 5) == 0) {
+        if (testServoCallback != nullptr) testServoCallback("DIRECT");
+        return;
+    }
+
+    if (strncmp(upper, "PAY", 3) == 0 || strncmp(upper, "DISPENSE", 8) == 0) {
+        if (dispenseCallback != nullptr) {
+            char* payload = frame + (strncmp(upper, "PAY", 3) == 0 ? 3 : 8);
+            while (*payload && isspace(*payload)) payload++;
+            dispenseCallback(payload);
         }
         return;
     }
 
-    sendEvent("ERROR", "UNKNOWN_COMMAND");
+    if (strcmp(upper, "IDLE") == 0) {
+        uno::hardware_manager::resetProcessingState();
+        return;
+    }
+
+    sendEvent("ERROR", "UNKNOWN");
 }
 
 }  // namespace
@@ -127,35 +119,51 @@ void init(ActionCallback onDispense, ActionCallback onTestMotor, ActionCallback 
     testMotorCallback = onTestMotor;
     testServoCallback = onTestServo;
     statusCallback = onStatus;
-    inboundFrame = "";
+    inboundPos = 0;
 }
 
-void sendEvent(const String& eventName, const String& payload) {
-    // printFormatted("[SERIAL] TX EVT:%s:%s", eventName, payload);
-    Serial.print("EVT:");
+void sendEvent(const char* eventName, const char* payload) {
+    printFormatted("[SERIAL] TX -> EVT:", eventName, payload);
+    Serial.print(F("EVT:"));
     Serial.print(eventName);
-    Serial.print(":");
+    Serial.print(F(":"));
     Serial.println(payload);
 }
 
 void pump() {
     static uint32_t lastIdleLog = 0;
+    static uint32_t lastCharReceivedAt = 0;
+    const uint32_t kInboundTimeoutMs = 500;
+
     if (millis() - lastIdleLog > 30000) {
         lastIdleLog = millis();
-        Serial.println("[SYSTEM] Uno is idle and waiting for commands...");
+        Serial.println(F("[SYSTEM] Uno is idle and waiting..."));
     }
+
     while (Serial.available() > 0) {
         const char ch = static_cast<char>(Serial.read());
-        if (ch == protocol::kFrameTerminator) {
-            String frame = protocol::normalizeFrame(inboundFrame);
-            inboundFrame = "";
-            if (frame.length() > 0) {
-                printFormatted("[SERIAL] RX line: %s", frame);
-                handleCommand(frame);
+        lastCharReceivedAt = millis();
+
+        if (ch == protocol::kFrameTerminator || ch == '\r') {
+            if (inboundPos > 0) {
+                inboundBuffer[inboundPos] = '\0';
+                printFormatted("[SERIAL] RX line: ", inboundBuffer);
+                handleCommand(inboundBuffer);
+                inboundPos = 0;
             }
             continue;
         }
-        inboundFrame += ch;
+
+        if (inboundPos < kMaxFrameLen - 1) {
+            inboundBuffer[inboundPos++] = ch;
+        }
+    }
+
+    if (inboundPos > 0 && (millis() - lastCharReceivedAt > kInboundTimeoutMs)) {
+        inboundBuffer[inboundPos] = '\0';
+        printFormatted("[SERIAL] RX timeout: ", inboundBuffer);
+        handleCommand(inboundBuffer);
+        inboundPos = 0;
     }
 }
 

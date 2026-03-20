@@ -21,21 +21,20 @@ const uint32_t kBillDebounceMs = 2000;
 
 void printInitStatus() {
     char buffer[96];
-    snprintf(buffer, sizeof(buffer), "[HW] Init complete | drop_sensor=%d led=%d servo=%d",
-             unopins::kDropSensorPin, unopins::kStatusLedPin, unopins::kServoPin);
+    snprintf(buffer, sizeof(buffer), "[HW] Init complete | led=%d servo=%d",
+             unopins::kStatusLedPin, unopins::kServoPin);
     Serial.println(buffer);
 }
 
 void printBillDetected(const BillDetector::Color& color) {
     char buffer[96];
-    snprintf(buffer, sizeof(buffer), "[BILL] 10k detected | R=%d G=%d B=%d", color.r, color.g, color.b);
+    snprintf(buffer, sizeof(buffer), "[BILL] *** 10,000 VND *** | R=%d G=%d B=%d", color.r, color.g, color.b);
     Serial.println(buffer);
 }
 
-void printHardwareStatus(int dropState, bool gateOpen, const BillDetector::Color& color) {
+void printHardwareStatus(bool gateOpen, const BillDetector::Color& color) {
     char buffer[112];
-    snprintf(buffer, sizeof(buffer), "[HW STATUS] drop=%s gate=%s bill_processing=%d rgb=(%d,%d,%d)",
-             dropState == LOW ? "LOW" : "HIGH",
+    snprintf(buffer, sizeof(buffer), "[HW STATUS] gate=%s bill_processing=%d rgb=(%d,%d,%d)",
              gateOpen ? "OPEN" : "CLOSED",
              billProcessing ? 1 : 0,
              color.r, color.g, color.b);
@@ -49,7 +48,7 @@ void init(MotorController* motor, BillDetector* detector, GateManager* gate) {
     billScanner = detector;
     billGate = gate;
 
-    pinMode(unopins::kDropSensorPin, INPUT_PULLUP);
+    // pinMode(unopins::kDropSensorPin, INPUT_PULLUP); // DISABLED
     pinMode(unopins::kStatusLedPin, OUTPUT);
     digitalWrite(unopins::kStatusLedPin, HIGH);
 
@@ -71,16 +70,19 @@ void update() {
     if (detected && !billProcessing) {
         if (billDetectionStartedAt == 0) {
             billDetectionStartedAt = now;
-        } else if (now - billDetectionStartedAt > 100) {
+            Serial.println(F("[BILL] Potential bill detected, debouncing..."));
+        } else if (now - billDetectionStartedAt > 500) { // Slightly longer debounce for stability
             BillDetector::Color color = billScanner->getCurrentColor();
             printBillDetected(color);
             billGate->trigger();
+            Serial.println(F("[GATE] Triggered (5s OPEN) for bill insertion."));
             serial_protocol::sendEvent("CASH_INSERTED", "10000");
             billProcessing = true;
             billDetectionStartedAt = now;
         }
     } else if (!detected && billProcessing) {
         if (now - billDetectionStartedAt > kBillDebounceMs) {
+            Serial.println(F("[BILL] Slot clear. Ready for next."));
             billProcessing = false;
             billDetectionStartedAt = 0;
         }
@@ -91,21 +93,25 @@ void update() {
     billGate->update();
 }
 
-void testMotor(const String& payload) {
+void testMotor(const char* payload) {
     if (stepper == nullptr) {
-        serial_protocol::sendEvent("ERROR", "STEPPER_NOT_INITIALIZED");
+        serial_protocol::sendEvent("ERROR", "MOTOR_NULL");
         return;
     }
 
-    Serial.print("[MOTOR] TEST_MOTOR payload: ");
+    Serial.print(F("[MOTOR] START TEST | Payload: "));
     Serial.println(payload);
-    stepper->rotateClockwise(4096, 5);
-    delay(1000);
+    
+    // Rotate 1 full revolution (4096 steps for 28BYJ-48)
+    stepper->rotateClockwise(4096, 5); 
+    delay(500);
     stepper->rotateCounterClockwise(4096, 5);
-    serial_protocol::sendEvent("ACK", "TEST_MOTOR_DONE");
+    
+    Serial.println(F("[MOTOR] TEST DONE"));
+    serial_protocol::sendEvent("ACK", "MOTOR_TEST_OK");
 }
 
-void testServo(const String& payload) {
+void testServo(const char* payload) {
     (void)payload;
 
     if (billGate == nullptr) {
@@ -117,14 +123,21 @@ void testServo(const String& payload) {
     serial_protocol::sendEvent("ACK", "TEST_SERVO_STARTED");
 }
 
-void printStatus(const String& payload) {
+void printStatus(const char* payload) {
     (void)payload;
 
-    int dropState = digitalRead(unopins::kDropSensorPin);
+    // int dropState = digitalRead(unopins::kDropSensorPin); // DISABLED
     BillDetector::Color color = billScanner != nullptr ? billScanner->getCurrentColor() : BillDetector::Color{0, 0, 0};
     bool gateOpen = billGate != nullptr ? billGate->isOpen() : false;
 
-    printHardwareStatus(dropState, gateOpen, color);
+    printHardwareStatus(gateOpen, color);
+}
+
+void resetProcessingState() {
+    billProcessing = false;
+    billDetectionStartedAt = 0;
+    if (billScanner != nullptr) billScanner->begin(); // Realignment
+    Serial.println(F("[HW] State reset to IDLE."));
 }
 
 }  // namespace hardware_manager

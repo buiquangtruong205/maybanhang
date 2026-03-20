@@ -8,13 +8,13 @@ Bảng dưới đây liệt kê chính xác các chân cắm đang được sử
 
 | Thành phần | Chân (Pin) | Ghi chú |
 | :--- | :--- | :--- |
-| **Màn hình TFT ILI9341** | | |
+| **Màn hình TFT ST7789V** | | Chip ST7789, 240×320, SPI |
 | MOSI | 23 | |
 | SCK (Clock) | 18 | |
 | CS (Chip Select) | 5 | |
-| DC (Data/Command) | 2 | |
-| RST (Reset) | 4 | |
-| BL (Backlight) | 15 | Đèn nền màn hình |
+| DC (Data/Command) | 21 | ⚠️ Đã đổi từ GPIO 2 |
+| RST (Reset) | 22 | ⚠️ Đã đổi từ GPIO 4 |
+| BL (Backlight) | 3.3V trực tiếp | ⚠️ Nối thẳng, không qua GPIO |
 | **Bàn phím (Keypad 4x3)** | | |
 | Row 1 | 13 | |
 | Row 2 | 12 | |

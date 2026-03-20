@@ -8,22 +8,22 @@ static constexpr uint8_t kUartTxPin = 17;
 static constexpr uint8_t kTftMosiPin = 23;
 static constexpr uint8_t kTftSckPin = 18;
 static constexpr uint8_t kTftCsPin = 5;
-static constexpr uint8_t kTftDcPin = 2;
-static constexpr uint8_t kTftResetPin = 4;
-static constexpr int8_t kTftBacklightPin = 15;
+static constexpr uint8_t kTftDcPin = 21;     // ST7789 DC pin
+static constexpr uint8_t kTftResetPin = 22;   // ST7789 RST pin
+static constexpr int8_t kTftBacklightPin = -1; // BLK nối trực tiếp 3.3V
 
-// Keypad Pins
-static constexpr uint8_t kKeypadRow1 = 13;
-static constexpr uint8_t kKeypadRow2 = 12;
-static constexpr uint8_t kKeypadRow3 = 14;
+// Keypad Pins (Updated to match user logic)
+static constexpr uint8_t kKeypadRow1 = 12;
+static constexpr uint8_t kKeypadRow2 = 33;
+static constexpr uint8_t kKeypadRow3 = 25;
 static constexpr uint8_t kKeypadRow4 = 27;
-static constexpr uint8_t kKeypadCol1 = 26;
-static constexpr uint8_t kKeypadCol2 = 25;
-static constexpr uint8_t kKeypadCol3 = 33;
+static constexpr uint8_t kKeypadCol1 = 14;
+static constexpr uint8_t kKeypadCol2 = 13;
+static constexpr uint8_t kKeypadCol3 = 26;
 static constexpr uint8_t kBootButtonPin = 0;
 static constexpr uint32_t kBootResetHoldMs = 4000;
 
-static constexpr uint32_t kBackendPollIntervalMs = 5000;
+static constexpr uint32_t kBackendPollIntervalMs = 10000;
 static constexpr uint32_t kHeartbeatIntervalMs = 15000;
 static constexpr uint32_t kPaymentPollIntervalMs = 3000;
 static constexpr uint32_t kPaymentSessionTimeoutMs = 300000;

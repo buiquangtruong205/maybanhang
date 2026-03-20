@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 class OrderCreate(BaseModel):
+    machine_id: Optional[int] = None
     product_id: int
     price_snapshot: float
     slot_id: Optional[int] = None  # Optional for demo without slots
@@ -11,6 +12,7 @@ class OrderCreate(BaseModel):
 
 class OrderOut(BaseModel):
     order_id: int
+    machine_id: Optional[int] = None
     product_id: int
     price_snapshot: float
     slot_id: Optional[int] = None  # Optional for demo without slots

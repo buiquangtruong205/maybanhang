@@ -94,6 +94,12 @@ def emit_machine_status_update(machine_id, status_data):
     socketio.emit('status_update', status_data, room=room, namespace='/machine')
 
 
+def emit_payment_status_update(machine_id, payment_data):
+    """Thông báo cập nhật tiến trình thanh toán (ví dụ nạp tiền mặt)"""
+    room = f'machine_{machine_id}'
+    socketio.emit('payment_status_update', payment_data, room=room, namespace='/machine')
+
+
 # ==========================================
 # /admin Namespace (New)
 # ==========================================
@@ -113,18 +119,37 @@ def on_admin_subscribe():
 
 def emit_admin_log(log_data):
     """Gửi log real-time lên Dashboard"""
-    socketio.emit('new_log', log_data, room='admin_room', namespace='/admin')
+    socketio.emit('admin_log', log_data, room='admin_room', namespace='/admin')
 
 
 def emit_admin_order_new(order_data):
     """Thông báo khi có đơn hàng mới"""
-    socketio.emit('new_order', order_data, room='admin_room', namespace='/admin')
+    socketio.emit('admin_order_new', order_data, room='admin_room', namespace='/admin')
 
 
 def emit_admin_machine_status(machine_id, status_data):
-    """Thông báo trạng thái máy thay đổi cho Admin"""
-    payload = {'machine_id': machine_id, **status_data}
-    socketio.emit('machine_status_change', payload, room='admin_room', namespace='/admin')
+    """
+    Thông báo trạng thái máy thay đổi cho Admin.
+    """
+    payload = {"machine_id": machine_id, **status_data}
+    socketio.emit('admin_machine_status', payload, room='admin_room', namespace='/admin')
+
+
+def emit_admin_stock_update(machine_id, stock_data):
+    """
+    Thông báo cập nhật tồn kho cho Admin.
+    """
+    payload = {"machine_id": machine_id, **stock_data}
+    socketio.emit('admin_stock_update', payload, room='admin_room', namespace='/admin')
+
+
+def emit_admin_device_auth_update(machine_id):
+    """
+    Thông báo khi trạng thái bảo mật của máy (Identity/Session) thay đổi.
+    Để Admin UI tự động tải lại bảng hiển thị.
+    """
+    socketio.emit('admin_device_auth_update', {'machine_id': machine_id}, room='admin_room', namespace='/admin')
+
 
 
 def emit_machine_command(machine_id, command, payload=None):

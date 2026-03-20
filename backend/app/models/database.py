@@ -99,8 +99,9 @@ class Order(db.Model, TimestampMixin):
     __tablename__ = "orders"
 
     order_id = db.Column(db.Integer, primary_key=True)
+    machine_id = db.Column(db.Integer, db.ForeignKey("machines.machine_id"), nullable=True, index=True)
     product_id = db.Column(db.Integer, db.ForeignKey("products.product_id"), nullable=False, index=True)
-    slot_id = db.Column(db.Integer, db.ForeignKey("slots.slot_id"), nullable=True, index=True)  # nullable for demo without slots
+    slot_id = db.Column(db.Integer, db.ForeignKey("slots.slot_id"), nullable=True, index=True)
 
     price_snapshot = db.Column(db.Numeric(10, 2), nullable=False)
     quantity = db.Column(db.Integer, default=1, nullable=False)

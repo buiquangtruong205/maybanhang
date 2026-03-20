@@ -26,9 +26,10 @@ uint32_t paymentStartedAt = 0;
 uint32_t dispenseStartedAt = 0;
 uint32_t lastDispenseReportRetryAt = 0;
 bool deviceRegistered = false;
+bool deviceRevoked = false;
 bool lastWifiConnected = false;
 
-constexpr uint32_t kUnoPingIntervalMs = 10000;
+constexpr uint32_t kUnoPingIntervalMs = 20000;
 constexpr uint32_t kDispenseTimeoutMs = 20000;
 constexpr uint32_t kDispenseReportRetryMs = 10000;
 
@@ -39,6 +40,7 @@ bool dispensingInProgress = false;
 String currentSlotCode = esp32cfg::kDefaultSlotCode;
 String pendingSlotInput = "";
 uint32_t accumulatedCash = 0;
+uint32_t currentOrderTotal = 0;
 String currentAmountText;
 bool transactionHasBackendOrder = false;
 bool shouldClearCashOnSuccess = false;
@@ -115,6 +117,7 @@ void resetPaymentState() {
     dispensingInProgress = false;
     transactionHasBackendOrder = false;
     shouldClearCashOnSuccess = false;
+    currentOrderTotal = 0;
 }
 
 void updateAccumulatedCash(uint32_t amount, bool relative = true) {
@@ -157,12 +160,22 @@ bool flushPendingDispenseReport() {
 void finalizeSuccess(bool clearCash) {
     logState("SUCCESS", "Order completed");
     displayui::showPaymentResult("THANH CONG", "Hoan tat", true);
+    
     if (clearCash) {
-        updateAccumulatedCash(0, false);
+        if (accumulatedCash >= currentOrderTotal) {
+            uint32_t newBalance = accumulatedCash - currentOrderTotal;
+            Serial.printf("[VENDING] Transaction success. Subtracting %u from %u. New balance: %u\n", 
+                          currentOrderTotal, accumulatedCash, newBalance);
+            updateAccumulatedCash(newBalance, false);
+        } else {
+            // Trường hợp hy hữu (ví dụ nhầm lẫn đơn hàng online/offline)
+            updateAccumulatedCash(0, false);
+        }
     }
+    
     resetPaymentState();
     pendingSlotInput = "";
-    delay(2000);
+    delay(3000); 
     displayui::showHome(accumulatedCash, wifi_manager::isConnected());
 }
 
@@ -171,7 +184,7 @@ void finalizeFailure(const String& detail) {
     displayui::showPaymentResult("THAT BAI", detail, false);
     resetPaymentState();
     pendingSlotInput = "";
-    delay(2000);
+    delay(5000); // 5 seconds to view result screen
     displayui::showHome(accumulatedCash, wifi_manager::isConnected());
 }
 
@@ -238,7 +251,8 @@ void pollPaymentStatus() {
 }
 
 void processPendingOrders() {
-    if (waitingForPayment || dispensingInProgress || hasPendingDispenseReport) return;
+    // Chỉ chặn nếu đang thực sự nhả hàng hoặc đang bận báo cáo kết quả
+    if (dispensingInProgress || hasPendingDispenseReport) return;
 
     JsonDocument doc;
     if (!api_client::fetchPendingOrders(doc)) return;
@@ -259,7 +273,7 @@ void processPendingOrders() {
     transactionHasBackendOrder = true;
     shouldClearCashOnSuccess = false;
 
-    Serial.printf("[POLL] Remote pending order %d found\n", currentOrderId);
+    Serial.printf("[POLL] Remote pending order %d found for slot %s\n", currentOrderId, currentSlotCode.c_str());
     startDispenseFlow();
 }
 
@@ -299,6 +313,7 @@ void startOnlinePaymentForSlot(const String& inputCode) {
     currentSlotCode = slotCode;
     waitingForPayment = true;
     paymentStartedAt = millis();
+    currentOrderTotal = order.amount;
     currentAmountText = String(order.amount) + " VND";
     transactionHasBackendOrder = true;
     shouldClearCashOnSuccess = false;
@@ -337,25 +352,35 @@ void tryCashDispense(const String& inputCode) {
 
     currentOrderId = order.id;
     currentSlotCode = slotCode;
+    currentOrderTotal = order.amount;
     transactionHasBackendOrder = true;
     shouldClearCashOnSuccess = accumulatedCash > 0;
 
     uint32_t reported = 0;
     int remaining = -1;
+    bool anyReportFailed = false;
+
     while (reported < accumulatedCash) {
         uint32_t toReport = 10000;
         if (reported + toReport > accumulatedCash) toReport = accumulatedCash - reported;
         
         if (!api_client::reportCashInsert(order.id, (int)toReport, remaining)) {
-            displayui::showError("LOI BACKEND", "Khong the luu don");
-            delay(2000);
-            displayui::showHome(accumulatedCash, true);
-            return;
+            Serial.printf("[CASH] Warning: Failed to report chunk %u to backend\n", toReport);
+            anyReportFailed = true;
+            // Không return ngay nếu đã đủ tiền cục bộ
+            if (accumulatedCash < currentOrderTotal) {
+                displayui::showError("LOI BACKEND", "Khong the luu don");
+                delay(2000);
+                displayui::showHome(accumulatedCash, true);
+                return;
+            }
         }
         reported += toReport;
     }
 
-    if (remaining <= 0) {
+    // Ưu tiên nhả hàng nếu TIỀN CỤC BỘ ĐÃ ĐỦ
+    if (accumulatedCash >= currentOrderTotal || remaining <= 0) {
+         Serial.println("[CASH] Final check: Condition met! Dispensing...");
          startDispenseFlow();
     } else {
         // Still remaining, show QR
@@ -409,9 +434,20 @@ void update() {
         }
 
         if (api_client::getLastStatusCode() == 403) {
-            Serial.println("[VENDING] Auth failed (403), retrying registration...");
-            deviceRegistered = false;
+            if (!deviceRevoked) {
+                deviceRevoked = true;
+                deviceRegistered = false;
+                Serial.println("[SECURITY] Device REVOKED by server (403). Locking interface.");
+                displayui::showMaintenance("Thiet bi bi tam khoa\n(Revoked)");
+            }
+        } else if (deviceRevoked && api_client::getLastStatusCode() >= 200 && api_client::getLastStatusCode() < 300) {
+            // If it was revoked but now we get a success, it must be restored
+            deviceRevoked = false;
+            Serial.println("[SECURITY] Device RESTORED by server. Unlocking.");
+            displayui::showHome(accumulatedCash, true);
         }
+
+        if (deviceRevoked) return; // Skip further processing if locked
 
         if (now - lastHeartbeatAt >= esp32cfg::kHeartbeatIntervalMs) {
             lastHeartbeatAt = now;
@@ -447,6 +483,10 @@ void update() {
 }
 
 void handleKey(char key) {
+    if (deviceRevoked) {
+        Serial.printf("[SECURITY] Key %c ignored - Device is REVOKED\n", key);
+        return;
+    }
     if (waitingForPayment || dispensingInProgress) return;
 
     Serial.printf("[VENDING] Key: %c\n", key);
@@ -466,8 +506,6 @@ void handleKey(char key) {
 }
 
 void handleUnoEvent(const String& eventName, const String& payload) {
-    Serial.printf("[UNO EVT] %s | payload=%s\n", eventName.c_str(), payload.c_str());
-    
     if (eventName == "PONG") {
         if (!unoAlive) {
             unoAlive = true;
@@ -477,6 +515,9 @@ void handleUnoEvent(const String& eventName, const String& payload) {
         lastUnoResponseAt = millis();
         return;
     }
+
+    // Log all OTHER important events
+    Serial.printf("[UNO EVT] %s | payload=%s\n", eventName.c_str(), payload.c_str());
 
     if (eventName == "DISPENSE_OK" && dispensingInProgress) {
         finalizeDispenseResult(true, payload.length() > 0 ? payload : "OK");
@@ -492,18 +533,29 @@ void handleUnoEvent(const String& eventName, const String& payload) {
         Serial.printf("[VENDING] Cash received: %d, Total: %u\n", amount, accumulatedCash);
 
         if (waitingForPayment && currentOrderId > 0) {
-            // Report only the NEW denomination
+            Serial.printf("[CASH] Reporting 10k to Backend for Order #%d...\n", currentOrderId);
+            
+            // Cập nhật màn hình nạp tiền mặt
+            displayui::showCashPaymentProgress(String(currentOrderId), currentOrderTotal, accumulatedCash);
+
             int remaining = -1;
-            if (api_client::reportCashInsert(currentOrderId, amount, remaining)) {
+            bool apiSuccess = api_client::reportCashInsert(currentOrderId, amount, remaining);
+            
+            if (apiSuccess) {
+                Serial.printf("[CASH] Backend Reported Remaining: %d\n", remaining);
                 shouldClearCashOnSuccess = true;
-                if (remaining <= 0) {
-                    Serial.println("[CASH] fully paid now! Dispensing...");
-                    startDispenseFlow();
-                } else {
-                    Serial.printf("[CASH] Partial payment reported. Remaining: %d\n", remaining);
-                    // Update UI if needed (re-show QR with new amount?)
-                    // For now, pollPaymentStatus will eventually handle it or user can pay rest.
-                }
+            } else {
+                Serial.printf("[CASH] ERROR: Failed to report %d to backend for order #%d\n", amount, currentOrderId);
+            }
+
+            // Local check làm fail-safe: Nếu tiền đã nạp đủ theo bộ nhớ ESP32, cho phép nhả hàng luôn
+            if ((apiSuccess && remaining <= 0) || (accumulatedCash >= currentOrderTotal)) {
+                Serial.println("[CASH] CONDITION MET: Fully paid (via API or Local Check)! Starting dispense flow...");
+                startDispenseFlow();
+            } else {
+                Serial.printf("[CASH] Still missing money. Local: %u/%u, Backend: %d\n", 
+                              accumulatedCash, currentOrderTotal, remaining);
+                displayui::showCashPaymentProgress(String(currentOrderId), currentOrderTotal, accumulatedCash);
             }
         } else if (!waitingForPayment && !dispensingInProgress) {
             if (pendingSlotInput.length() > 0) displayui::showInputSlot(pendingSlotInput, accumulatedCash);
@@ -515,7 +567,8 @@ void handleUnoEvent(const String& eventName, const String& payload) {
 void handleMqttCommand(const String& cmd, const String& val) {
     Serial.printf("[MQTT CMD] %s | %s\n", cmd.c_str(), val.c_str());
     if (config_manager::isRemoteDispenseEnabled() && cmd.equalsIgnoreCase("DISPENSE")) {
-        if (!waitingForPayment && !dispensingInProgress) {
+        // Cho phép nhả hàng ngay cả khi đang chờ thanh toán (vì Web đã báo xong)
+        if (!dispensingInProgress) {
             // Support formats: "DISPENSE:<slot>" or "DISPENSE:<slot>:<order_id>"
             int secondColon = val.indexOf(':');
             if (secondColon != -1) {
@@ -580,6 +633,10 @@ void handleConsoleCommand(const String& cmdRaw) {
     } else if (cmd == "IDLE") {
         resetPaymentState();
         pendingSlotInput = "";
+        displayui::showHome(accumulatedCash, wifi_manager::isConnected());
+    } else if (cmd == "CLEAR_CASH") {
+        Serial.println("[USB TEST] Manual CLEAR_CASH");
+        updateAccumulatedCash(0, false);
         displayui::showHome(accumulatedCash, wifi_manager::isConnected());
     } else if (cmd == "PAY") {
         startOnlinePaymentForSlot(config_manager::mapSelectionToSlotCode(esp32cfg::kDefaultSlotCode));

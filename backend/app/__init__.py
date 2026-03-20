@@ -38,6 +38,54 @@ def ensure_machine_dynamic_config_columns():
 
     db.session.commit()
 
+def ensure_order_machine_id_column():
+    inspector = inspect(db.engine)
+    if not inspector.has_table('orders'):
+        return
+
+    existing_columns = {column['name'] for column in inspector.get_columns('orders')}
+    if 'machine_id' not in existing_columns:
+        print("Applying schema upgrade for orders.machine_id")
+        db.session.execute(text('ALTER TABLE orders ADD COLUMN machine_id INTEGER'))
+        db.session.commit()
+
+def ensure_device_identity_columns():
+    inspector = inspect(db.engine)
+    if not inspector.has_table('device_identity'):
+        return
+
+    existing_columns = {column['name'] for column in inspector.get_columns('device_identity')}
+    if 'last_heartbeat' not in existing_columns:
+        print("Applying schema upgrade for device_identity.last_heartbeat")
+        db.session.execute(text('ALTER TABLE device_identity ADD COLUMN last_heartbeat TIMESTAMP'))
+        db.session.commit()
+
+def start_offline_monitor(app):
+    """Luồng chạy ngầm để phát hiện và báo máy offline real-time"""
+    with app.app_context():
+        while True:
+            try:
+                from app.models import DeviceIdentity
+                from app.websocket import emit_admin_machine_status
+                from datetime import datetime, timedelta
+                
+                # Ngưỡng 60 giây
+                threshold = datetime.utcnow() - timedelta(seconds=60)
+                
+                # Query các thiết bị có heartbeat quá cũ HOẶC chưa bao giờ có heartbeat
+                offline_identities = DeviceIdentity.query.filter(
+                    (DeviceIdentity.last_heartbeat == None) | (DeviceIdentity.last_heartbeat < threshold)
+                ).all()
+                
+                for identity in offline_identities:
+                    # Gửi tin nhắn OFFLINE real-time
+                    emit_admin_machine_status(identity.machine_id, {"status": "OFFLINE"})
+                    
+            except Exception as e:
+                print(f"Monitor error: {e}")
+            
+            socketio.sleep(15) # Kiểm tra mỗi 15 giây
+
 def create_app(config_class=Config):
     validate_startup_config()
     app = Flask(__name__, static_folder='static')
@@ -249,6 +297,11 @@ def create_app(config_class=Config):
         try:
             db.create_all()
             ensure_machine_dynamic_config_columns()
+            ensure_device_identity_columns()
+            ensure_order_machine_id_column()
+            
+            # Khởi động luồng giám sát offline
+            socketio.start_background_task(start_offline_monitor, app)
         except Exception as e:
             print(f"⚠️  Warning: Could not create database tables: {e}")
             print("   Make sure DATABASE_URL environment variable is set correctly.")

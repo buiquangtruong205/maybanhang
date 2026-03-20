@@ -144,6 +144,10 @@ void init() {
     wm.setBreakAfterConfig(true);
     wm.setConfigPortalBlocking(false);
 
+    // Force Station mode and enable auto-reconnect
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
+
     if (forceConfigPortal) {
         Serial.println("[WIFI] Manual portal requested via BOOT button");
         wm.startConfigPortal("Vending-Setup", "12345678");
@@ -194,13 +198,23 @@ void loop() {
     } else {
         if (disconnectedAt == 0) disconnectedAt = millis();
         
-        if (!isInitialConfiguring && !isApModeActive && (millis() - disconnectedAt > kApTimeoutMs)) {
-            Serial.println("[WIFI] Connection lost for > 2 mins. Starting Config Portal...");
-            displayui::showError("MAT KET NOI", "Bat dau AP Mode...");
-            isApModeActive = true;
-            wm.setConfigPortalBlocking(false);
-            wm.startConfigPortal("Vending-Setup", "12345678");
-            disconnectedAt = millis();
+        static uint32_t lastReconnectAttempt = 0;
+        if (!isInitialConfiguring && !isApModeActive) {
+            // Nudge WiFi to reconnect every 10 seconds if disconnected
+            if (millis() - lastReconnectAttempt > 10000) {
+                lastReconnectAttempt = millis();
+                Serial.println("[WIFI] Connection lost, nudging WiFi.reconnect()...");
+                WiFi.reconnect();
+            }
+
+            if (millis() - disconnectedAt > kApTimeoutMs) {
+                Serial.println("[WIFI] Connection lost for > 2 mins. Starting Config Portal...");
+                displayui::showError("MAT KET NOI", "Bat dau AP Mode...");
+                isApModeActive = true;
+                wm.setConfigPortalBlocking(false);
+                wm.startConfigPortal("Vending-Setup", "12345678");
+                disconnectedAt = millis();
+            }
         }
     }
 }

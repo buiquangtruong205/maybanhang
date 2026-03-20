@@ -32,6 +32,7 @@ class MachineOut(BaseModel):
     wifi_status: Optional[str] = "disconnected"
     wifi_signal: Optional[str] = None
     uptime: Optional[int] = 0
+    rssi: Optional[int] = None
     
     class Config:
         from_attributes = True

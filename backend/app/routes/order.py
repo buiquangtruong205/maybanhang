@@ -68,6 +68,7 @@ def create_order():
         
         # Tạo order
         new_order = Order(
+            machine_id=slot.machine_id,
             product_id=data.product_id,
             price_snapshot=data.price_snapshot,
             slot_id=data.slot_id,
@@ -200,7 +201,15 @@ def create_pending_order(current_auth):
 
         price_snapshot = float(product.price) * quantity
         
+        # Lấy machine_id từ slot hoặc nhận từ client
+        final_machine_id = json_data.get('machine_id')
+        if slot_id is not None and not final_machine_id:
+            slot = Slot.query.get(slot_id)
+            if slot:
+                final_machine_id = slot.machine_id
+
         new_order = Order(
+            machine_id=final_machine_id,
             product_id=product_id,
             price_snapshot=price_snapshot,
             slot_id=slot_id,

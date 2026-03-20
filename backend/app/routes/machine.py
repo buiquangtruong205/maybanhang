@@ -57,15 +57,30 @@ def get_machines(current_user):
     data = []
     for m in machines:
         m_out = MachineOut.model_validate(m).model_dump()
-        # Merge dynamic status from DeviceIdentity if exists
+        
+        # Calculate calculated_status
         identity = getattr(m, 'device_identity', None)
-        if identity:
-            m_out['uptime'] = identity.uptime or 0
-            m_out['wifi_signal'] = identity.wifi_ssid or ""
-            if identity.rssi is not None:
+        is_offline = True
+        if identity and identity.last_heartbeat:
+            from datetime import datetime
+            diff = (datetime.utcnow() - identity.last_heartbeat).total_seconds()
+            if diff <= 60:
+                is_offline = False
+        
+        # Apply status and telemetry
+        if is_offline:
+            m_out['status'] = "OFFLINE"
+            m_out['wifi_status'] = "disconnected"
+            m_out['wifi_signal'] = ""
+            m_out['uptime'] = 0
+        else:
+            m_out['status'] = m.status or "ONLINE"
+            if identity:
+                m_out['uptime'] = identity.uptime or 0
+                m_out['wifi_signal'] = identity.wifi_ssid or ""
                 m_out['wifi_status'] = "connected"
-            else:
-                m_out['wifi_status'] = "disconnected"
+                m_out['rssi'] = identity.rssi
+        
         data.append(m_out)
         
     return jsonify({
@@ -85,15 +100,28 @@ def get_machine(current_auth, machine_id):
         }), 404
         
     m_out = MachineOut.model_validate(machine).model_dump()
-    identity = getattr(machine, 'device_identity', None)
-    if identity:
-        m_out['uptime'] = identity.uptime or 0
-        m_out['wifi_signal'] = identity.wifi_ssid or ""
-        if identity.rssi is not None:
-            m_out['wifi_status'] = "connected"
-        else:
-            m_out['wifi_status'] = "disconnected"
+    # Calculate status and telemetry
+    identity = machine.device_identity
+    is_offline = True
+    if identity and identity.last_heartbeat:
+        from datetime import datetime
+        diff = (datetime.utcnow() - identity.last_heartbeat).total_seconds()
+        if diff <= 60:
+            is_offline = False
             
+    if is_offline:
+        m_out['status'] = "OFFLINE"
+        m_out['wifi_status'] = "disconnected"
+        m_out['wifi_signal'] = ""
+        m_out['uptime'] = 0
+    else:
+        m_out['status'] = machine.status or "ONLINE"
+        if identity:
+            m_out['uptime'] = identity.uptime or 0
+            m_out['wifi_signal'] = identity.wifi_ssid or ""
+            m_out['wifi_status'] = "connected"
+            m_out['rssi'] = identity.rssi
+
     return jsonify({
         'success': True,
         'message': 'Machine retrieved successfully',

@@ -17,7 +17,7 @@ from app.schemas.payment import (
     PaymentCreate,
     WebhookPayload
 )
-from app.websocket import emit_payment_success, emit_payment_cancelled
+from app.websocket import emit_payment_success, emit_payment_cancelled, emit_admin_order_new
 from app.utils.mqtt import send_dispense_command
 from app.utils.machine_auth import multi_auth_required
 import os
@@ -92,7 +92,9 @@ def _settle_paid_order(real_order_id: int, payment_code: int, amount=None, trans
     if locked_order.slot_id:
         slot = Slot.query.filter_by(slot_id=locked_order.slot_id).with_for_update().first()
     else:
+        # Tự động tìm Slot phù hợp TRÊN CÙNG MÁY của đơn hàng
         slot = Slot.query.filter(
+            Slot.machine_id == locked_order.machine_id,
             Slot.product_id == locked_order.product_id,
             Slot.stock >= qty
         ).with_for_update().first()
@@ -176,6 +178,17 @@ def _settle_paid_order(real_order_id: int, payment_code: int, amount=None, trans
     except Exception as exc:
         debug_log(f"{source.upper()}: Failed to emit payment success for order {real_order_id}: {exc}")
 
+    try:
+        emit_admin_order_new({
+            'order_id': real_order_id,
+            'machine_id': slot.machine_id,
+            'amount': float(_normalize_amount(amount) or _normalize_amount(locked_order.price_snapshot)),
+            'status': 'completed',
+            'timestamp': datetime.utcnow().isoformat()
+        })
+    except Exception as exc:
+        pass
+
     return {
         'ok': True,
         'settled': True,
@@ -241,7 +254,18 @@ def _cancel_order_in_db(order_code: int):
     order.status_payment = 'cancelled'
     order.status_slots = 'cancelled'
     db.session.commit()
+    
     emit_payment_cancelled(real_order_id)
+    try:
+        emit_admin_order_new({
+            'order_id': real_order_id,
+            'machine_id': order.slot.machine_id if order.slot else None,
+            'status': 'cancelled',
+            'timestamp': datetime.utcnow().isoformat()
+        })
+    except Exception as exc:
+        pass
+        
     print(f"✅ Order #{real_order_id} marked as cancelled in DB")
 
     return {
