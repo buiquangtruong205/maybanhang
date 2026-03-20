@@ -14,15 +14,15 @@ ActionCallback statusCallback = nullptr;
 String inboundFrame;
 
 void printFormatted(const char* format, const String& value) {
-    char buffer[96];
-    snprintf(buffer, sizeof(buffer), format, value.c_str());
-    Serial.println(buffer);
+    // char buffer[96];
+    // snprintf(buffer, sizeof(buffer), format, value.c_str());
+    // Serial.println(buffer);
 }
 
 void printFormatted(const char* format, const String& first, const String& second) {
-    char buffer[128];
-    snprintf(buffer, sizeof(buffer), format, first.c_str(), second.c_str());
-    Serial.println(buffer);
+    // char buffer[128];
+    // snprintf(buffer, sizeof(buffer), format, first.c_str(), second.c_str());
+    // Serial.println(buffer);
 }
 
 void handleCommand(const String& frame) {
@@ -32,7 +32,7 @@ void handleCommand(const String& frame) {
     upper.toUpperCase();
 
     if (frame.startsWith("CMD:PING:")) {
-        Serial.println("[SERIAL] RX protocol PING");
+        Serial.println("[SYSTEM] Uno is ALIVE (responding to ESP32)");
         sendEvent("PONG", "UNO");
         return;
     }
@@ -131,7 +131,7 @@ void init(ActionCallback onDispense, ActionCallback onTestMotor, ActionCallback 
 }
 
 void sendEvent(const String& eventName, const String& payload) {
-    printFormatted("[SERIAL] TX EVT:%s:%s", eventName, payload);
+    // printFormatted("[SERIAL] TX EVT:%s:%s", eventName, payload);
     Serial.print("EVT:");
     Serial.print(eventName);
     Serial.print(":");
@@ -139,6 +139,11 @@ void sendEvent(const String& eventName, const String& payload) {
 }
 
 void pump() {
+    static uint32_t lastIdleLog = 0;
+    if (millis() - lastIdleLog > 30000) {
+        lastIdleLog = millis();
+        Serial.println("[SYSTEM] Uno is idle and waiting for commands...");
+    }
     while (Serial.available() > 0) {
         const char ch = static_cast<char>(Serial.read());
         if (ch == protocol::kFrameTerminator) {

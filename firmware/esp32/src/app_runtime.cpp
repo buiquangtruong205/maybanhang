@@ -28,6 +28,9 @@ void onUnoEvent(const String& frame) {
             payload = frame.substring(separator + 1);
         }
         vending_controller::handleUnoEvent(eventName, payload);
+    } else if (frame.indexOf("PONG:UNO") >= 0) {
+        // Lần đầu or dự phòng nếu mất prefix
+        vending_controller::handleUnoEvent("PONG", "UNO");
     } else {
         Serial.print("[UNO RAW] ");
         Serial.println(frame);

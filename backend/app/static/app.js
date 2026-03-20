@@ -378,8 +378,9 @@ function renderMachines(machines) {
     const tbody = document.getElementById('machinesTable');
     tbody.innerHTML = machines.map(m => {
         const itemJson = escapeHtml(JSON.stringify(m));
-        const statusClass = m.status === 'active' ? 'active' : (m.status === 'maintenance' ? 'warning' : 'inactive');
-        const wifiClass = m.wifi_status === 'connected' ? 'active' : 'inactive';
+        const status = (m.status || '').toLowerCase();
+        const statusClass = (status === 'active' || status === 'online') ? 'active' : (status === 'maintenance' ? 'warning' : 'inactive');
+        const wifiClass = (m.wifi_status || '').toLowerCase() === 'connected' ? 'active' : 'inactive';
         
         return `
         <tr>
@@ -1529,7 +1530,7 @@ function renderDeviceSessions(sessions) {
         const statusClass = (s.status === 'active' && !isExpired) ? 'active' : 'inactive';
         return `
             <tr>
-                <td class="id-column">${s.session_id.substring(0, 8)}...</td>
+                <td class="id-column">${(s.session_id || '').toString().substring(0, 8)}...</td>
                 <td class="table-align-center">#${s.machine_id}</td>
                 <td class="table-align-center"><code>${s.ip_address || '-'}</code></td>
                 <td class="table-align-center">${formatDate(s.issued_at)}</td>

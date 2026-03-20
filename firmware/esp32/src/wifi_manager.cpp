@@ -1,5 +1,7 @@
 #include "wifi_manager.h"
+#include <WiFi.h>
 #include <WiFiManager.h>
+#include <WebServer.h>
 #include "app_config.h"
 #include "config_manager.h"
 #include "display_ui.h"
@@ -19,11 +21,24 @@ WiFiManagerParameter* custom_mqtt_ip;
 uint32_t disconnectedAt = 0;
 bool isApModeActive = false;
 constexpr uint32_t kApTimeoutMs = 120000; // 2 minutes
+bool isInitialConfiguring = false;
 
 void saveConfigCallback() {
-    Serial.println("[WIFI] Should save config");
+    Serial.println("[WIFI] Configuration change detected");
     shouldSaveConfig = true;
 }
+
+void webServerCallback() {
+    if (wm.server) {
+        // Silencing rogue requests to save CPU and avoid noise
+        wm.server->onNotFound([]() {
+            if (wm.server) {
+                wm.server->send(200, "text/plain", "OK");
+            }
+        });
+    }
+}
+
 
 void persistCustomConfig(const config_manager::Config& baseCfg) {
     if (!shouldSaveConfig) {
@@ -78,6 +93,33 @@ bool detectResetRequest() {
 
     return true;
 }
+
+void checkBootButtonRuntime() {
+    static uint32_t pressStart = 0;
+    static bool isPressing = false;
+
+    if (bootButtonPressed()) {
+        if (!isPressing) {
+            isPressing = true;
+            pressStart = millis();
+            Serial.println("[WIFI] BOOT button pressed, holding to reset...");
+            displayui::showLoading("GIU NUT BOOT", "De reset cau hinh");
+        } else if (millis() - pressStart >= esp32cfg::kBootResetHoldMs) {
+            Serial.println("[WIFI] BOOT button held for 4s, resetting config and restarting...");
+            wm.resetSettings();
+            config_manager::clearConfig();
+            delay(500);
+            ESP.restart();
+        }
+    } else {
+        if (isPressing) {
+            isPressing = false;
+            Serial.println("[WIFI] BOOT button released before timeout, resuming...");
+            // Cap nhat lai man hinh chinh ngay khi tha tay
+            displayui::showHome(0, true);
+        }
+    }
+}
 }
 
 void init() {
@@ -97,48 +139,24 @@ void init() {
     wm.addParameter(custom_mqtt_ip);
 
     wm.setSaveConfigCallback(saveConfigCallback);
+    wm.setWebServerCallback(webServerCallback);
     wm.setParamsPage(true); // Show params on first page
     wm.setBreakAfterConfig(true);
+    wm.setConfigPortalBlocking(false);
 
     if (forceConfigPortal) {
-        Serial.println("[WIFI] Reset requested from BOOT button");
-        wm.resetSettings();
-        config_manager::clearConfig();
-    }
-
-    Serial.println(forceConfigPortal ? "[WIFI] Starting Config Portal..." : "[WIFI] Starting AutoConnect...");
-    Serial.printf("[WIFI] Config | api=%s mqtt=%s key_len=%u\n",
-                  cfg.apiBaseUrl.c_str(),
-                  cfg.mqttBroker.c_str(),
-                  (unsigned int)cfg.machineKey.length());
-    displayui::showWifiConnecting("Captive Portal");
-
-    bool wifiReady = false;
-    if (forceConfigPortal) {
-        wifiReady = wm.startConfigPortal("Vending-Setup");
+        Serial.println("[WIFI] Manual portal requested via BOOT button");
+        wm.startConfigPortal("Vending-Setup", "12345678");
+        isInitialConfiguring = true;
     } else {
-        wifiReady = wm.autoConnect("Vending-Setup");
+        Serial.println("[WIFI] Attempting AutoConnect (Non-blocking)...");
+        wm.autoConnect("Vending-Setup", "12345678");
+        if (WiFi.status() != WL_CONNECTED) {
+            isInitialConfiguring = true;
+        }
     }
 
-    if (!wifiReady) {
-        Serial.println("[WIFI] Failed to connect or config portal timed out");
-        delay(3000);
-        ESP.restart();
-    }
-
-    // 3. Save parameters if changed
-    if (shouldSaveConfig) {
-        persistCustomConfig(cfg);
-        Serial.println("[WIFI] Configuration updated, restarting...");
-        delay(1000);
-        ESP.restart();
-    }
-
-    Serial.println("[WIFI] Connected successfully!");
-    Serial.printf("[WIFI] IP=%s SSID=%s\n", WiFi.localIP().toString().c_str(), WiFi.SSID().c_str());
-    displayui::showWifiReady(WiFi.localIP());
-    delay(1000);
-    displayui::showHome(config_manager::getAccumulatedCash(), true);
+    Serial.println("[WIFI] Init finished, returning to core setup (Async Mode)");
 }
 
 bool isConnected() {
@@ -146,30 +164,43 @@ bool isConnected() {
 }
 
 void loop() {
+    checkBootButtonRuntime();
+
+    // Luôn xử lý WiFiManager nếu đang trong trạng thái Config hoặc AP
+    if (isInitialConfiguring || isApModeActive) {
+        wm.process();
+        delay(1); 
+    }
+
+    if (shouldSaveConfig) {
+        persistCustomConfig(config_manager::getConfig());
+        Serial.println("[WIFI] Configuration saved, restarting...");
+        delay(1000);
+        ESP.restart();
+    }
+
     if (WiFi.status() == WL_CONNECTED) {
         disconnectedAt = 0;
+        if (isInitialConfiguring) {
+            Serial.println("[WIFI] Initial configuration/connection complete");
+            isInitialConfiguring = false;
+            displayui::showHome(config_manager::getAccumulatedCash(), true);
+        }
         if (isApModeActive) {
             Serial.println("[WIFI] Reconnected, closing AP...");
+            wm.stopConfigPortal();
             isApModeActive = false;
         }
     } else {
         if (disconnectedAt == 0) disconnectedAt = millis();
         
-        if (!isApModeActive && (millis() - disconnectedAt > kApTimeoutMs)) {
+        if (!isInitialConfiguring && !isApModeActive && (millis() - disconnectedAt > kApTimeoutMs)) {
             Serial.println("[WIFI] Connection lost for > 2 mins. Starting Config Portal...");
             displayui::showError("MAT KET NOI", "Bat dau AP Mode...");
             isApModeActive = true;
-            wm.setConfigPortalTimeout(300); // 5 mins
-            shouldSaveConfig = false;
+            wm.setConfigPortalBlocking(false);
             wm.startConfigPortal("Vending-Setup", "12345678");
-            isApModeActive = false; // Reset if portal finishes
-            if (shouldSaveConfig) {
-                persistCustomConfig(config_manager::getConfig());
-                Serial.println("[WIFI] Configuration updated from AP mode, restarting...");
-                delay(1000);
-                ESP.restart();
-            }
-            disconnectedAt = millis(); // Reset timer
+            disconnectedAt = millis();
         }
     }
 }

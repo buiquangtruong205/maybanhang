@@ -208,6 +208,7 @@ class DeviceIdentity(db.Model):
     rssi = db.Column(db.Integer, nullable=True)
     wifi_ssid = db.Column(db.String(100), nullable=True)
     uptime = db.Column(db.BigInteger, default=0, nullable=True)
+    last_heartbeat = db.Column(db.DateTime, nullable=True, index=True)
 
     provisioned_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     revoked_at = db.Column(db.DateTime, nullable=True, index=True)

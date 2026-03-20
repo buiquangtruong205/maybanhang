@@ -49,7 +49,10 @@ void setup() {
         handleStatusCommand
     );
     
-    Serial.println("[BOOT] UNO Modular ready");
+    Serial.println("");
+    Serial.println("================================");
+    Serial.println("  VENDING MACHINE UNO V3 READY  ");
+    Serial.println("================================");
     uno::serial_protocol::sendEvent("READY", "UNO_V3");
 }
 

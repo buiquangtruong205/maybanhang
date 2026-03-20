@@ -16,6 +16,9 @@ void init(ConsoleCommandCallback callback) {
 void loop() {
     while (Serial.available() > 0) {
         const char ch = static_cast<char>(Serial.read());
+        // Echo for debug
+        Serial.printf("[DEBUG USB] char: '%c' (0x%02x)\n", ch, ch);
+        
         if (ch == '\n' || ch == '\r') {
             String command = protocol::normalizeFrame(usbConsoleBuffer);
             usbConsoleBuffer = "";

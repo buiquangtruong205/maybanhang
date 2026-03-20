@@ -28,5 +28,10 @@ class MachineOut(BaseModel):
     config_notes: Optional[str]
     created_at: datetime
     
+    # Dynamic status from DeviceIdentity
+    wifi_status: Optional[str] = "disconnected"
+    wifi_signal: Optional[str] = None
+    uptime: Optional[int] = 0
+    
     class Config:
         from_attributes = True

@@ -6,6 +6,7 @@ from app.models import Machine
 from app.schemas import MachineCreate, MachineOut
 from app.utils import token_required, multi_auth_required
 from app.utils.admin_logger import log_admin_action
+from app.utils.mqtt import send_machine_command
 
 machine_bp = Blueprint('machine', __name__)
 
@@ -53,10 +54,24 @@ def _apply_machine_payload(machine, data):
 @token_required
 def get_machines(current_user):
     machines = Machine.query.all()
+    data = []
+    for m in machines:
+        m_out = MachineOut.model_validate(m).model_dump()
+        # Merge dynamic status from DeviceIdentity if exists
+        identity = getattr(m, 'device_identity', None)
+        if identity:
+            m_out['uptime'] = identity.uptime or 0
+            m_out['wifi_signal'] = identity.wifi_ssid or ""
+            if identity.rssi is not None:
+                m_out['wifi_status'] = "connected"
+            else:
+                m_out['wifi_status'] = "disconnected"
+        data.append(m_out)
+        
     return jsonify({
         'success': True,
         'message': 'Machines retrieved successfully',
-        'data': [MachineOut.model_validate(m).model_dump() for m in machines]
+        'data': data
     })
 
 @machine_bp.route('/machines/<int:machine_id>', methods=['GET'])
@@ -68,11 +83,61 @@ def get_machine(current_auth, machine_id):
             'success': False,
             'message': 'Machine not found'
         }), 404
+        
+    m_out = MachineOut.model_validate(machine).model_dump()
+    identity = getattr(machine, 'device_identity', None)
+    if identity:
+        m_out['uptime'] = identity.uptime or 0
+        m_out['wifi_signal'] = identity.wifi_ssid or ""
+        if identity.rssi is not None:
+            m_out['wifi_status'] = "connected"
+        else:
+            m_out['wifi_status'] = "disconnected"
+            
     return jsonify({
         'success': True,
         'message': 'Machine retrieved successfully',
-        'data': MachineOut.model_validate(machine).model_dump()
+        'data': m_out
     })
+
+@machine_bp.route('/machines/<int:machine_id>/control', methods=['POST'])
+@token_required
+def control_machine(current_user, machine_id):
+    machine = Machine.query.filter_by(machine_id=machine_id).first()
+    if not machine:
+        return jsonify({
+            'success': False,
+            'message': 'Machine not found'
+        }), 404
+        
+    data = request.get_json(force=True, silent=True)
+    if not data or 'command' not in data:
+        return jsonify({
+            'success': False,
+            'message': 'Command is required'
+        }), 400
+        
+    command = data['command']
+    # Map 'UNLOCK' to 'UNLOCK' or other protocols if needed
+    success = send_machine_command(machine_id, command)
+    
+    if success:
+        log_admin_action(
+            user_id=current_user.user_id,
+            action='control_machine',
+            detail=f"Gửi lệnh {command} tới máy '{machine.name}'",
+            target_type='machine',
+            target_id=machine_id
+        )
+        return jsonify({
+            'success': True,
+            'message': f'Lệnh {command} đã được gửi thành công'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': 'Lỗi gửi lệnh qua MQTT'
+        }), 500
 
 @machine_bp.route('/machines', methods=['POST'])
 @token_required

@@ -321,7 +321,7 @@ bool reportLog(const String& level, const String& message) {
 
     JsonDocument responseDoc;
     int statusCode = 0;
-    if (!apiRequest("POST", "/iot/report-log", payload, responseDoc, statusCode)) return false;
+    if (!apiRequest("POST", "/iot/logs", payload, responseDoc, statusCode)) return false;
     return statusCode >= 200 && statusCode < 300 && (responseDoc["success"] | false);
 }
 
