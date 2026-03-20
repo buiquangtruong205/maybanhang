@@ -10,7 +10,8 @@ namespace dispense_controller {
 
 namespace {
 
-MotorController* stepper = nullptr;
+MotorController* stepper1 = nullptr;
+MotorController* stepper2 = nullptr;
 const uint32_t kDropDetectTimeoutMs = 3000;
 const uint32_t kDropDetectDebounceMs = 50;
 
@@ -22,19 +23,28 @@ const char* extractPayloadValue(const char* payload) {
 
 }  // namespace
 
-void init(MotorController* motor) {
-    stepper = motor;
+void init(MotorController* motor1, MotorController* motor2) {
+    stepper1 = motor1;
+    stepper2 = motor2;
 }
 
 void run(const char* payload) {
-    if (stepper == nullptr) {
+    const char* slotCode = extractPayloadValue(payload);
+    MotorController* activeStepper = stepper1; // Default to motor 1
+
+    // Simple routing logic based on slot code
+    if (strcmp(slotCode, "02") == 0 || strcmp(slotCode, "A2") == 0) {
+        activeStepper = stepper2;
+    }
+
+    if (activeStepper == nullptr) {
         serial_protocol::sendEvent("ERROR", "STEPPER_NULL");
         return;
     }
 
-    const char* slotCode = extractPayloadValue(payload);
-    Serial.println(F("[DISPENSE] Motor starting..."));
-    stepper->rotateClockwise(4096, 5); // Start motor
+    Serial.print(F("[DISPENSE] Motor starting for slot: "));
+    Serial.println(slotCode);
+    activeStepper->rotateClockwise(4096, 5); // Start motor
 
     const uint32_t startedAt = millis();
     const uint32_t hardTimeoutMs = 15000;
@@ -44,8 +54,8 @@ void run(const char* payload) {
     while (millis() - startedAt < hardTimeoutMs) {
         wdt_reset(); 
         
-        if (stepper->isMoving()) {
-            stepper->tick();
+        if (activeStepper->isMoving()) {
+            activeStepper->tick();
         } else {
             dispenseSuccess = true;
             break;
@@ -53,7 +63,7 @@ void run(const char* payload) {
         delay(1); 
     }
 
-    stepper->stop(); // Ensure motor is off
+    activeStepper->stop(); // Ensure motor is off
 
     if (dispenseSuccess) {
         serial_protocol::sendEvent("DISPENSE_OK", slotCode[0] ? slotCode : "OK");

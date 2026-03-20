@@ -10,7 +10,7 @@ class GateManager;
 
 namespace hardware_manager {
 
-void init(MotorController* motor, BillDetector* detector, GateManager* gate);
+void init(MotorController* motor1, MotorController* motor2, BillDetector* detector, GateManager* gate);
 void update();
 void testMotor(const char* payload);
 void testServo(const char* payload);

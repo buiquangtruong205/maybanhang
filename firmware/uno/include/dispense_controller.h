@@ -8,7 +8,7 @@ class MotorController;
 
 namespace dispense_controller {
 
-void init(MotorController* motor);
+void init(MotorController* motor1, MotorController* motor2);
 void run(const char* payload);
 
 }  // namespace dispense_controller

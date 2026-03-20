@@ -30,7 +30,7 @@ bool deviceRevoked = false;
 bool lastWifiConnected = false;
 
 constexpr uint32_t kUnoPingIntervalMs = 20000;
-constexpr uint32_t kDispenseTimeoutMs = 20000;
+constexpr uint32_t kDispenseTimeoutMs = 60000;
 constexpr uint32_t kDispenseReportRetryMs = 10000;
 
 int currentOrderId = 0;
@@ -49,6 +49,9 @@ int pendingDispenseOrderId = 0;
 String pendingDispenseSlotCode;
 bool pendingDispenseSuccess = false;
 String pendingDispenseMessage;
+bool resultScreenActive = false;
+uint32_t resultScreenOpenedAt = 0;
+const uint32_t kResultScreenTimeoutMs = 15000;
 
 // Order History for Idempotency
 constexpr int kHistorySize = 5;
@@ -159,7 +162,9 @@ bool flushPendingDispenseReport() {
 
 void finalizeSuccess(bool clearCash) {
     logState("SUCCESS", "Order completed");
-    displayui::showPaymentResult("THANH CONG", "Hoan tat", true);
+    
+    // Always show result first
+    displayui::showPaymentResult("GIAO DICH THANH CONG", "Cam on quy khach!", true);
     
     if (clearCash) {
         if (accumulatedCash >= currentOrderTotal) {
@@ -168,29 +173,31 @@ void finalizeSuccess(bool clearCash) {
                           currentOrderTotal, accumulatedCash, newBalance);
             updateAccumulatedCash(newBalance, false);
         } else {
-            // Trường hợp hy hữu (ví dụ nhầm lẫn đơn hàng online/offline)
+            Serial.printf("[VENDING] Warning: Cash (%u) < Price (%u). Clearing all cash.\n", accumulatedCash, currentOrderTotal);
             updateAccumulatedCash(0, false);
         }
+    } else {
+        Serial.println("[VENDING] Note: Not a cash transaction, balance kept.");
     }
     
     resetPaymentState();
     pendingSlotInput = "";
-    delay(3000); 
-    displayui::showHome(accumulatedCash, wifi_manager::isConnected());
+    resultScreenActive = true;
+    resultScreenOpenedAt = millis();
 }
 
 void finalizeFailure(const String& detail) {
     logState("FAILURE", detail);
-    displayui::showPaymentResult("THAT BAI", detail, false);
+    displayui::showPaymentResult("GIAO DICH THAT BAI", detail, false);
     resetPaymentState();
     pendingSlotInput = "";
-    delay(5000); // 5 seconds to view result screen
-    displayui::showHome(accumulatedCash, wifi_manager::isConnected());
+    resultScreenActive = true;
+    resultScreenOpenedAt = millis();
 }
 
 void startDispenseFlow() {
     logState("DISPENSE_START", "Command sent to UNO");
-    displayui::showPaymentResult("THANH CONG", "Dang nhap hang...", true);
+    displayui::showLoading("DANG XU LY...", "Vui long cho nhan hang"); 
     waitingForPayment = false;
     dispensingInProgress = true;
     dispenseStartedAt = millis();
@@ -200,27 +207,39 @@ void startDispenseFlow() {
 }
 
 void finalizeDispenseResult(bool success, const String& detail) {
-    if (transactionHasBackendOrder) {
-        if (currentOrderId <= 0) {
-            displayui::showError("LOI TRANG THAI", "Thieu Order ID");
-            resetPaymentState();
-            return;
-        }
+    // 1. Capture info needed for reporting before reset
+    int orderToReport = currentOrderId;
+    String slotToReport = currentSlotCode;
+    bool hasOrder = transactionHasBackendOrder;
+    bool clearCashFlag = shouldClearCashOnSuccess;
 
-        if (!api_client::reportDispenseResult(currentOrderId, currentSlotCode, success, detail)) {
-            Serial.printf("[ERROR] Failed to report dispense result for order %d. Queuing retry.\n", currentOrderId);
-            queueDispenseReport(success, detail);
-        } else {
-            markOrderProcessed(currentOrderId);
-        }
-    }
+    Serial.printf("[VENDING] Finalizing result: %s (Detail: %s) | ClearCash: %d\n", 
+                  success ? "SUCCESS" : "FAIL", detail.c_str(), clearCashFlag);
 
+    // 2. Update UI IMMEDIATELY so user isn't stuck waiting for API
     if (success) {
         mqtt_manager::publishStatus("dispense_ok");
-        finalizeSuccess(shouldClearCashOnSuccess);
+        finalizeSuccess(clearCashFlag);
     } else {
         mqtt_manager::publishStatus("dispense_fail");
         finalizeFailure(detail);
+    }
+
+    // 3. Post-UI Reporting (Blocking calls happen here)
+    if (hasOrder && orderToReport > 0) {
+        Serial.println("[API] Reporting dispense result to server...");
+        if (!api_client::reportDispenseResult(orderToReport, slotToReport, success, detail)) {
+            Serial.printf("[ERROR] API Report failed for order %d. Queuing retry.\n", orderToReport);
+            // Manually re-populate needed vars for queue since reset happened
+            hasPendingDispenseReport = true;
+            pendingDispenseOrderId = orderToReport;
+            pendingDispenseSlotCode = slotToReport;
+            pendingDispenseSuccess = success;
+            pendingDispenseMessage = detail;
+        } else {
+            Serial.println("[API] Report successful.");
+            markOrderProcessed(orderToReport);
+        }
     }
 }
 
@@ -474,6 +493,12 @@ void update() {
         uno_comm::sendCommand(protocol::CommandType::Ping, "ESP32");
     }
 
+    // Auto-close result screen
+    if (resultScreenActive && now - resultScreenOpenedAt >= kResultScreenTimeoutMs) {
+        resultScreenActive = false;
+        displayui::showHome(accumulatedCash, wifi_manager::isConnected());
+    }
+
     // UNO Health Check
     if (unoAlive && (now - lastUnoResponseAt > 30000)) {
         unoAlive = false;
@@ -487,6 +512,14 @@ void handleKey(char key) {
         Serial.printf("[SECURITY] Key %c ignored - Device is REVOKED\n", key);
         return;
     }
+
+    if (resultScreenActive) {
+        Serial.println("[VENDING] Dismissing result screen via key");
+        resultScreenActive = false;
+        displayui::showHome(accumulatedCash, wifi_manager::isConnected());
+        return;
+    }
+
     if (waitingForPayment || dispensingInProgress) return;
 
     Serial.printf("[VENDING] Key: %c\n", key);

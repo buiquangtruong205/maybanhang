@@ -11,7 +11,8 @@ namespace hardware_manager {
 
 namespace {
 
-MotorController* stepper = nullptr;
+MotorController* stepper1 = nullptr;
+MotorController* stepper2 = nullptr;
 BillDetector* billScanner = nullptr;
 GateManager* billGate = nullptr;
 
@@ -43,8 +44,9 @@ void printHardwareStatus(bool gateOpen, const BillDetector::Color& color) {
 
 }  // namespace
 
-void init(MotorController* motor, BillDetector* detector, GateManager* gate) {
-    stepper = motor;
+void init(MotorController* motor1, MotorController* motor2, BillDetector* detector, GateManager* gate) {
+    stepper1 = motor1;
+    stepper2 = motor2;
     billScanner = detector;
     billGate = gate;
 
@@ -52,7 +54,8 @@ void init(MotorController* motor, BillDetector* detector, GateManager* gate) {
     pinMode(unopins::kStatusLedPin, OUTPUT);
     digitalWrite(unopins::kStatusLedPin, HIGH);
 
-    if (stepper != nullptr) stepper->begin();
+    if (stepper1 != nullptr) stepper1->begin();
+    if (stepper2 != nullptr) stepper2->begin();
     if (billScanner != nullptr) billScanner->begin();
     if (billGate != nullptr) billGate->begin();
 
@@ -94,18 +97,37 @@ void update() {
 }
 
 void testMotor(const char* payload) {
-    if (stepper == nullptr) {
+    if (stepper1 == nullptr) {
         serial_protocol::sendEvent("ERROR", "MOTOR_NULL");
         return;
     }
 
-    Serial.print(F("[MOTOR] START TEST | Payload: "));
+    Serial.print(F("[MOTOR] START TEST | Selection: "));
     Serial.println(payload);
     
-    // Rotate 1 full revolution (4096 steps for 28BYJ-48)
-    stepper->rotateClockwise(4096, 5); 
-    delay(500);
-    stepper->rotateCounterClockwise(4096, 5);
+    if (strcmp(payload, "1") == 0) {
+        Serial.println(F("[MOTOR] Testing Stepper 1 (A1) ONLY..."));
+        stepper1->rotateClockwise(2048, 5); 
+    } 
+    else if (strcmp(payload, "2") == 0) {
+        if (stepper2 != nullptr) {
+            Serial.println(F("[MOTOR] Testing Stepper 2 (A2) ONLY..."));
+            stepper2->rotateClockwise(2048, 5);
+        } else {
+            Serial.println(F("[MOTOR] Stepper 2 is NULL!"));
+        }
+    }
+    else {
+        // Default legacy behavior: rotate both one after another
+        Serial.println(F("[MOTOR] Testing both motors sequentially..."));
+        Serial.println(F("[MOTOR] -> Stepper 1..."));
+        stepper1->rotateClockwise(2048, 5); 
+        delay(500);
+        if (stepper2 != nullptr) {
+            Serial.println(F("[MOTOR] -> Stepper 2..."));
+            stepper2->rotateClockwise(2048, 5);
+        }
+    }
     
     Serial.println(F("[MOTOR] TEST DONE"));
     serial_protocol::sendEvent("ACK", "MOTOR_TEST_OK");

@@ -12,7 +12,8 @@
 
 namespace {
 
-uno::MotorController stepper(unopins::kStepperIn1, unopins::kStepperIn2, unopins::kStepperIn3, unopins::kStepperIn4);
+uno::MotorController stepper1(unopins::kStepperIn1, unopins::kStepperIn2, unopins::kStepperIn3, unopins::kStepperIn4);
+uno::MotorController stepper2(unopins::kStepper2In1, unopins::kStepper2In2, unopins::kStepper2In3, unopins::kStepper2In4);
 uno::BillDetector billScanner(unopins::kColorS0, unopins::kColorS1, unopins::kColorS2, unopins::kColorS3, unopins::kColorOut);
 uno::GateManager billGate(unopins::kServoPin);
 
@@ -40,8 +41,8 @@ void setup() {
     // Enable AVR watchdog (8 seconds)
     wdt_enable(WDTO_8S);
     
-    uno::dispense_controller::init(&stepper);
-    uno::hardware_manager::init(&stepper, &billScanner, &billGate);
+    uno::dispense_controller::init(&stepper1, &stepper2);
+    uno::hardware_manager::init(&stepper1, &stepper2, &billScanner, &billGate);
     uno::serial_protocol::init(
         handleDispenseCommand, 
         handleTestMotorCommand, 
@@ -63,7 +64,9 @@ void loop() {
     // Pump communication and hardware updates
     uno::serial_protocol::pump();
     uno::hardware_manager::update();
-    stepper.tick();
+    
+    stepper1.tick();
+    stepper2.tick();
     
     delay(2);
 }

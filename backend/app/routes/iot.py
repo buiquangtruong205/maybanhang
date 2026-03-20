@@ -128,16 +128,23 @@ def dispense_complete(machine_id):
         order.status_slots = 'dispensed' if dispense_success else 'failed'
         db.session.commit()
         
-        emit_admin_machine_status(machine_id, {
-            "last_order_id": order_id,
-            "last_dispense_status": "success" if dispense_success else "failed"
-        })
-        
         if dispense_success and order.slot:
+            # Decrement actual stock
+            if order.slot.stock > 0:
+                order.slot.stock -= 1
+                db.session.commit()
+                print(f"📦 [STOCK] Slot {order.slot.slot_code} decremented to {order.slot.stock}")
+
+            from app.websocket import emit_admin_stock_update
             emit_admin_stock_update(machine_id, {
                 'slot_code': order.slot.slot_code,
                 'new_stock': order.slot.stock,
                 'slot_id': order.slot.slot_id
+            })
+            emit_stock_update(machine_id, {
+                'slot_code': order.slot.slot_code, 
+                'new_stock': order.slot.stock, 
+                'product_id': order.slot.product_id
             })
         
         print(f"🎰 Dispense from machine {machine_id}: order={order_id}, success={dispense_success}")
@@ -221,6 +228,10 @@ def create_order_from_machine(machine_id):
         product = Product.query.get(product_id)
         if not product or not product.active:
             return jsonify({'success': False, 'message': 'Product not found or inactive'}), 404
+
+        # CRITICAL: Check stock before creating order
+        if slot and slot.stock <= 0:
+            return jsonify({'success': False, 'message': f'Slot {slot_code} is SOLD OUT', 'out_of_stock': True}), 400
 
         new_order = Order(
             machine_id=machine_id,
