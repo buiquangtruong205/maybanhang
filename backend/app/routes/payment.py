@@ -747,14 +747,15 @@ def payment_cancel_page():
         }), cancelled.get('http_status', 400)
 
     return jsonify({
-        'success': False,
+        'success': True,
         'message': cancelled['message'],
         'order_code': order_code,
         'order_id': _parse_order_id(int(order_code))
     }), 200
 
 @payment_bp.route('/debug-db', methods=['GET'])
-def debug_db():
+@multi_auth_required
+def debug_db(current_auth):
     from app.models import Order, Slot
     orders = Order.query.order_by(Order.order_id.desc()).limit(5).all()
     slots = Slot.query.order_by(Slot.slot_id.asc()).limit(15).all()

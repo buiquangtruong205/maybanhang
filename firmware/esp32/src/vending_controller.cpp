@@ -30,7 +30,7 @@ bool deviceRevoked = false;
 bool lastWifiConnected = false;
 
 constexpr uint32_t kUnoPingIntervalMs = 20000;
-constexpr uint32_t kDispenseTimeoutMs = 60000;
+constexpr uint32_t kDispenseTimeoutMs = 30000;
 constexpr uint32_t kDispenseReportRetryMs = 10000;
 
 int currentOrderId = 0;

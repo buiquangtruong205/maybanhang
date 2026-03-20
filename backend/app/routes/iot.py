@@ -129,11 +129,12 @@ def dispense_complete(machine_id):
         db.session.commit()
         
         if dispense_success and order.slot:
-            # Decrement actual stock
-            if order.slot.stock > 0:
-                order.slot.stock -= 1
+            # Lock slot row to prevent race condition on stock decrement
+            slot = Slot.query.filter_by(slot_id=order.slot.slot_id).with_for_update().first()
+            if slot and slot.stock > 0:
+                slot.stock -= 1
                 db.session.commit()
-                print(f"📦 [STOCK] Slot {order.slot.slot_code} decremented to {order.slot.stock}")
+                print(f"📦 [STOCK] Slot {slot.slot_code} decremented to {slot.stock}")
 
             from app.websocket import emit_admin_stock_update
             emit_admin_stock_update(machine_id, {

@@ -54,38 +54,13 @@ bool BillDetector::update() {
     current.g = gSum / samples;
     current.b = bSum / samples;
 
-    // Logic for 10k VND (based on user provided ranges)
+    // Detection logic for 10k VND (based on user provided ranges)
     // R: 90-120, G: 100-230, B: 80-115
     lastDetected = ((current.r >= 90 && current.r <= 120) && 
                     (current.g >= 100 && current.g <= 230) && 
                     (current.b >= 80 && current.b <= 115));
 
-    static uint32_t lastHeartbeatLogAt = 0;
-    static Color lastLoggedColor = {0, 0, 0};
-
-    // Only log if detected, OR if heartbeat interval reached, OR if color changed significantly
-    bool colorChanged = (abs(current.r - lastLoggedColor.r) > 15 || 
-                         abs(current.g - lastLoggedColor.g) > 15 || 
-                         abs(current.b - lastLoggedColor.b) > 15);
-
-    if (lastDetected) {
-        Serial.print(F("[BILL] *** 10,000 VND MATCH *** | R=")); Serial.print(current.r);
-        Serial.print(F(" G=")); Serial.print(current.g);
-        Serial.print(F(" B=")); Serial.println(current.b);
-        lastHeartbeatLogAt = now;
-        lastLoggedColor = current;
-    } else if (colorChanged || (now - lastHeartbeatLogAt >= 30000)) {
-        // Periodic heartbeat log or significant change to show sensor is alive
-        Serial.print(F("[SENSOR] R=")); Serial.print(current.r);
-        Serial.print(F(" G=")); Serial.print(current.g);
-        Serial.print(F(" B=")); Serial.print(current.b);
-        if (colorChanged) Serial.print(F(" (CHNG)"));
-        else Serial.print(F(" (IDLE)"));
-        Serial.println();
-        
-        lastHeartbeatLogAt = now;
-        lastLoggedColor = current;
-    }
+    // All Serial debug logs removed — UNO Serial shared with ESP32 UART
 
     return lastDetected;
 }

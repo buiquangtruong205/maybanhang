@@ -42,32 +42,28 @@ void handleCommand(char* frame) {
 
     // 1. Protocol Commands (CMD:...)
     if (strncmp(upper, "CMD:PING:", 9) == 0) {
-        Serial.println(F("[SERIAL] PING received"));
         sendEvent("PONG", "UNO");
         return;
     }
 
     if (strncmp(upper, "CMD:DISPENSE:", 13) == 0) {
-        printFormatted("[SERIAL] RX DISPENSE: ", frame + 13);
         if (dispenseCallback != nullptr) dispenseCallback(frame + 13);
         return;
     }
 
     if (strncmp(upper, "CMD:TEST_MOTOR:", 15) == 0) {
-        printFormatted("[SERIAL] RX TEST_MOTOR: ", frame + 15);
         if (testMotorCallback != nullptr) testMotorCallback(frame + 15);
         return;
     }
 
     if (strncmp(upper, "CMD:TEST_SERVO:", 15) == 0) {
-        printFormatted("[SERIAL] RX TEST_SERVO: ", frame + 15);
         if (testServoCallback != nullptr) testServoCallback(frame + 15);
         return;
     }
 
     // 2. Direct / Debug Commands
     if (strcmp(upper, "HELP") == 0) {
-        Serial.println(F("[UNO] Commands: HELP | STATUS | PING | IDLE | MOTOR | SERVO | PAY"));
+        sendEvent("ACK", "HELP_OK");
         return;
     }
 
@@ -123,7 +119,9 @@ void init(ActionCallback onDispense, ActionCallback onTestMotor, ActionCallback 
 }
 
 void sendEvent(const char* eventName, const char* payload) {
-    printFormatted("[SERIAL] TX -> EVT:", eventName, payload);
+    // IMPORTANT: Do NOT print debug logs here!
+    // UNO has only 1 Serial port shared with ESP32 UART.
+    // Any extra prints will pollute the ESP32 parser.
     Serial.print(F("EVT:"));
     Serial.print(eventName);
     Serial.print(F(":"));
@@ -135,10 +133,8 @@ void pump() {
     static uint32_t lastCharReceivedAt = 0;
     const uint32_t kInboundTimeoutMs = 500;
 
-    if (millis() - lastIdleLog > 30000) {
-        lastIdleLog = millis();
-        Serial.println(F("[SYSTEM] Uno is idle and waiting..."));
-    }
+    // Idle log removed — Serial shared with ESP32
+    // (Keeping the timer variable in case we need it for watchdog logic later)
 
     while (Serial.available() > 0) {
         const char ch = static_cast<char>(Serial.read());
@@ -147,7 +143,7 @@ void pump() {
         if (ch == protocol::kFrameTerminator || ch == '\r') {
             if (inboundPos > 0) {
                 inboundBuffer[inboundPos] = '\0';
-                printFormatted("[SERIAL] RX line: ", inboundBuffer);
+                // Debug log removed — shared Serial with ESP32
                 handleCommand(inboundBuffer);
                 inboundPos = 0;
             }
@@ -161,7 +157,7 @@ void pump() {
 
     if (inboundPos > 0 && (millis() - lastCharReceivedAt > kInboundTimeoutMs)) {
         inboundBuffer[inboundPos] = '\0';
-        printFormatted("[SERIAL] RX timeout: ", inboundBuffer);
+        // Debug log removed — shared Serial with ESP32
         handleCommand(inboundBuffer);
         inboundPos = 0;
     }

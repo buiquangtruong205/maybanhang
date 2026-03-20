@@ -18,6 +18,8 @@ namespace {
 
 void onUnoEvent(const String& frame) {
     String eventName, payload;
+    
+    // Primary: Standard EVT: prefix
     if (frame.startsWith("EVT:")) {
         const int separator = frame.indexOf(':', 4);
         if (separator < 0) {
@@ -27,13 +29,21 @@ void onUnoEvent(const String& frame) {
             eventName = frame.substring(4, separator);
             payload = frame.substring(separator + 1);
         }
+        Serial.printf("[UNO PARSED] event=%s payload=%s\n", eventName.c_str(), payload.c_str());
         vending_controller::handleUnoEvent(eventName, payload);
-    } else if (frame.indexOf("PONG:UNO") >= 0) {
-        // Lần đầu or dự phòng nếu mất prefix
+    } 
+    // Fallback: Search for EVT: anywhere in the frame (in case of leftover garbage)
+    else if (frame.indexOf("EVT:") > 0) {
+        int evtStart = frame.indexOf("EVT:");
+        String cleanFrame = frame.substring(evtStart);
+        Serial.printf("[UNO RECOVERED] cleaned=%s from raw=%s\n", cleanFrame.c_str(), frame.c_str());
+        // Recursively parse the cleaned frame
+        onUnoEvent(cleanFrame);
+    }
+    else if (frame.indexOf("PONG") >= 0) {
         vending_controller::handleUnoEvent("PONG", "UNO");
     } else {
-        Serial.print("[UNO RAW] ");
-        Serial.println(frame);
+        Serial.printf("[UNO IGNORED] %s\n", frame.c_str());
     }
 }
 

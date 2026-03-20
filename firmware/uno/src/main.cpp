@@ -50,10 +50,7 @@ void setup() {
         handleStatusCommand
     );
     
-    Serial.println("");
-    Serial.println("================================");
-    Serial.println("  VENDING MACHINE UNO V3 READY  ");
-    Serial.println("================================");
+    // Boot banner removed — Serial shared with ESP32, only send EVT: frames
     uno::serial_protocol::sendEvent("READY", "UNO_V3");
 }
 

@@ -81,6 +81,9 @@ uint16_t resolveHeaderColorEnd() {
 // =============================================
 
 void drawCenteredText(const String& text, int16_t y, uint8_t size, uint16_t color, bool customFont = false) {
+    // ALWAYS reset textSize first to prevent inheritance from previous calls
+    tft.setTextSize(1);
+    
     if (customFont) {
         tft.setFont(&FreeSansBold9pt7b);
         if (size > 1) tft.setFont(&FreeSansBold12pt7b);
@@ -93,18 +96,15 @@ void drawCenteredText(const String& text, int16_t y, uint8_t size, uint16_t colo
     uint16_t width, height;
     tft.getTextBounds(text, 0, y, &x1, &y1, &width, &height);
     int16_t x = (kScreenWidth - static_cast<int16_t>(width)) / 2;
-    if (x < 0) x = 0;
-    
-    // Premium shadow for custom fonts only
-    if (customFont && color != COL_WHITE && color != COL_SHADOW) {
-        tft.setTextColor(COL_SHADOW);
-        tft.setCursor(x + 1, y + 1);
-        tft.print(text);
-    }
+    if (x < 0) x = 2;
     
     tft.setCursor(x, y);
     tft.setTextColor(color);
     tft.print(text);
+    
+    // Reset to default after printing to prevent state leaking
+    tft.setFont(NULL);
+    tft.setTextSize(1);
 }
 
 void drawLoadingDots(int16_t y, uint16_t activeColor, uint32_t intervalMs = 350) {
@@ -116,14 +116,14 @@ void drawLoadingDots(int16_t y, uint16_t activeColor, uint32_t intervalMs = 350)
     }
 }
 
-void drawWifiIcon(int16_t cx, int16_t cy, uint16_t color) {
+void drawWifiIcon(int16_t cx, int16_t cy, uint16_t color, uint16_t bgColor = COL_BG) {
     tft.fillCircle(cx, cy + 12, 3, color);
     tft.drawCircle(cx, cy + 12, 8, color);
     tft.drawCircle(cx, cy + 12, 9, color);
     tft.drawCircle(cx, cy + 12, 14, color);
     tft.drawCircle(cx, cy + 12, 15, color);
-    // Mask bottom part to make it look like arcs
-    tft.fillRect(cx - 20, cy + 13, 40, 20, COL_WHITE); 
+    // Mask bottom part to make it look like arcs (use bgColor, not hardcoded)
+    tft.fillRect(cx - 20, cy + 13, 40, 20, bgColor); 
 }
 
 void drawGearIcon(int16_t cx, int16_t cy, uint16_t color) {
@@ -143,14 +143,14 @@ void drawGearIcon(int16_t cx, int16_t cy, uint16_t color) {
 }
 
 void drawGradientRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t colorStart, uint16_t colorEnd) {
+    // Use signed int to prevent unsigned underflow when colorEnd < colorStart
+    int16_t r1 = (colorStart >> 11) & 0x1F, g1 = (colorStart >> 5) & 0x3F, b1 = colorStart & 0x1F;
+    int16_t r2 = (colorEnd >> 11) & 0x1F, g2 = (colorEnd >> 5) & 0x3F, b2 = colorEnd & 0x1F;
     for (int16_t i = 0; i < h; i++) {
-        // Linear interpolation between colors (very simple version for RGB565)
         float factor = (float)i / (float)h;
-        uint16_t r1 = (colorStart >> 11) & 0x1F, g1 = (colorStart >> 5) & 0x3F, b1 = colorStart & 0x1F;
-        uint16_t r2 = (colorEnd >> 11) & 0x1F, g2 = (colorEnd >> 5) & 0x3F, b2 = colorEnd & 0x1F;
-        uint16_t r = r1 + (r2 - r1) * factor;
-        uint16_t g = g1 + (g2 - g1) * factor;
-        uint16_t b = b1 + (b2 - b1) * factor;
+        uint16_t r = (uint16_t)(r1 + (int16_t)((r2 - r1) * factor));
+        uint16_t g = (uint16_t)(g1 + (int16_t)((g2 - g1) * factor));
+        uint16_t b = (uint16_t)(b1 + (int16_t)((b2 - b1) * factor));
         uint16_t color = (r << 11) | (g << 5) | b;
         tft.drawFastHLine(x, y + i, w, color);
     }
@@ -160,6 +160,8 @@ String fitTextToWidth(const String& text, uint8_t size, int16_t maxWidth) {
     String fitted = text;
     int16_t x1, y1;
     uint16_t width, height;
+    // Always reset to default font before measuring to prevent wrong bounds
+    tft.setFont(NULL);
     tft.setTextSize(size);
     tft.getTextBounds(fitted, 0, 0, &x1, &y1, &width, &height);
     if (width <= static_cast<uint16_t>(maxWidth)) return fitted;
@@ -225,6 +227,17 @@ void drawCard(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t bgColor = COL
 /** Draw a horizontal divider line */
 void drawDivider(int16_t y, uint16_t color = COL_DIVIDER) {
     tft.drawFastHLine(20, y, 200, color);
+}
+
+/** Reusable footer hint text (DRY) */
+void drawFooterHint(const char* text, int16_t y, uint16_t color = COL_TEXT_MUTED) {
+    tft.setFont(NULL);
+    tft.setTextSize(1);
+    tft.setTextColor(color);
+    int16_t x1, y1; uint16_t tw, th;
+    tft.getTextBounds(text, 0, 0, &x1, &y1, &tw, &th);
+    tft.setCursor((kScreenWidth - (int16_t)tw) / 2, y);
+    tft.print(text);
 }
 
 /** Improved status indicator icons */
@@ -316,11 +329,11 @@ void drawCommonHeader() {
     uint16_t end = resolveHeaderColorEnd();
     
     // Premium Gradient Header
-    drawGradientRect(0, 0, kScreenWidth, 48, start, end);
-    tft.drawFastHLine(0, 48, kScreenWidth, COL_DIVIDER);
+    drawGradientRect(0, 0, kScreenWidth, 50, start, end);
+    tft.drawFastHLine(0, 50, kScreenWidth, COL_DIVIDER);
 
     // Title with high contrast (Custom Font)
-    drawCenteredText(config_manager::getUiTitle(), 30, 1, COL_WHITE, true);
+    drawCenteredText(config_manager::getUiTitle(), 32, 1, COL_WHITE, true);
 
     const String machineName = config_manager::getMachineName();
     const String deviceLabel = config_manager::getDeviceLabel();
@@ -332,7 +345,15 @@ void drawCommonHeader() {
     }
     
     if (subLine.length() > 0) {
-        drawCenteredText(subLine, 45, 1, COL_PLATINUM, false);
+        tft.setFont(NULL);
+        tft.setTextSize(1);
+        int16_t x1, y1; uint16_t tw, th;
+        tft.getTextBounds(subLine, 0, 0, &x1, &y1, &tw, &th);
+        int16_t sx = (kScreenWidth - (int16_t)tw) / 2;
+        if (sx < 2) sx = 2;
+        tft.setCursor(sx, 42);
+        tft.setTextColor(COL_PLATINUM);
+        tft.print(subLine);
     }
 }
 
@@ -342,10 +363,17 @@ void drawCommonHeader() {
 
 void drawBalance(uint32_t balance) {
     if (balance > 0) {
-        // Slimmer balance card at the very bottom
-        drawCard(10, 240, 220, 38, COL_WHITE, COL_ACCENT);
+        // Compact balance badge at the bottom
+        drawCard(20, 285, 200, 30, COL_WHITE, COL_ACCENT);
         String balStr = "SO DU: " + String(balance) + " VND";
-        drawCenteredText(balStr, 268, 1, COL_PRIMARY, true);
+        tft.setFont(NULL);
+        tft.setTextSize(1);
+        int16_t x1, y1; uint16_t tw, th;
+        tft.getTextBounds(balStr, 0, 0, &x1, &y1, &tw, &th);
+        int16_t sx = (kScreenWidth - (int16_t)tw) / 2;
+        tft.setCursor(sx, 296);
+        tft.setTextColor(COL_PRIMARY);
+        tft.print(balStr);
     }
 }
 
@@ -386,15 +414,7 @@ void showBooting() {
     drawCenteredText("DANG KHOI DONG", 155, 1, COL_ACCENT, true);
     drawCenteredText("Vui long cho...", 185, 1, COL_TEXT_MUTED, false);
 
-    // Premium centered loading dots
-    constexpr int16_t kDotY = 220;
-    constexpr int16_t kDotRadius = 5;
-    constexpr int16_t kDotGap = 22;
-    uint32_t t = millis() / 350;
-    for (int i = 0; i < 3; i++) {
-        uint16_t col = (t % 3 == i) ? COL_ACCENT : COL_LIGHTGREY;
-        tft.fillCircle(109 - kDotGap + (i * kDotGap), kDotY, kDotRadius, col);
-    }
+    drawLoadingDots(220, COL_ACCENT);
 }
 
 void showWifiConnecting(const char* ssid) {
@@ -421,26 +441,23 @@ void showHome(uint32_t balance, bool wifiOk) {
     prepareCanvas(COL_BG);
     drawCommonHeader();
 
-    // Status Area (WiFi/Backend indicator cards - moved to corners)
-    drawStatusIcon(5, 52, wifiOk, "WIFI");
-    drawStatusIcon(187, 52, true, "SRV"); 
+    // Status badges below header (evenly spaced)
+    drawStatusIcon(5, 54, wifiOk, "WIFI");
+    drawStatusIcon(187, 54, true, "SRV"); 
 
     // Main Greeting
-    drawCenteredText("XIN CHAO", 95, 2, COL_PRIMARY, true);
+    drawCenteredText("XIN CHAO", 98, 2, COL_PRIMARY, true);
 
-    // Instructions Card
-    drawCard(12, 120, 216, 95, COL_WHITE, COL_SECONDARY);
-    
-    drawCenteredText("MOI CHON MON", 140, 1, COL_TEXT_MUTED, true);
-    drawCenteredMultilineText(config_manager::getUiHomeLine1(), 168, 1, COL_TEXT_MAIN, 2, 200, 22);
-    drawCenteredMultilineText(config_manager::getUiHomeLine2(), 198, 1, COL_TEXT_MAIN, 2, 200, 18);
+    // Instructions Card (consistent spacing: 8px gap between elements)
+    drawCard(12, 122, 216, 90, COL_WHITE, COL_SECONDARY);
+    drawCenteredText("MOI CHON MON", 142, 1, COL_TEXT_MUTED, true);
+    drawCenteredMultilineText(config_manager::getUiHomeLine1(), 168, 1, COL_TEXT_MAIN, 2, 196, 18);
+    drawCenteredMultilineText(config_manager::getUiHomeLine2(), 193, 1, COL_TEXT_MAIN, 1, 196, 18);
 
-    // Footer Area
-    int16_t footerY = 282;
-    drawDivider(footerY - 5);
-    
-    drawCenteredText("CHON MA: 01 - 99", footerY + 12, 1, COL_TEXT_MUTED, true);
-    drawCenteredText("[#] XAC NHAN   [*] XOA", footerY + 34, 1, COL_PRIMARY, false);
+    // Footer instructions (consistent spacing)
+    drawDivider(220);
+    drawCenteredText("CHON MA: 01 - 99", 234, 1, COL_TEXT_MUTED, true);
+    drawFooterHint("[#] XAC NHAN   [*] XOA", 256, COL_PRIMARY);
 
     drawBalance(balance);
 }
@@ -480,13 +497,13 @@ void showInputSlot(const String& currentInput, uint32_t balance) {
 
 void showLoading(const String& line1, const String& line2) {
     prepareCanvas(COL_BG);
-    drawCard(25, 90, 190, 140, COL_WHITE, COL_PRIMARY);
+    drawCard(20, 85, 200, 155, COL_WHITE, COL_PRIMARY);
 
-    drawCenteredMultilineText(line1, 115, 2, COL_PRIMARY, 2, 170, 24);
-    drawDivider(145);
-    drawCenteredMultilineText(line2, 160, 1, COL_TEXT_MAIN, 3, 170, 18);
+    drawCenteredText(line1, 115, 1, COL_PRIMARY, true);
+    drawDivider(135);
+    drawCenteredMultilineText(line2, 155, 1, COL_TEXT_MAIN, 3, 180, 18);
 
-    drawLoadingDots(210, COL_PRIMARY);
+    drawLoadingDots(220, COL_PRIMARY);
 }
 
 void showPaymentQr(const String& orderId, const String& amountText, const String& qrPayload) {
@@ -494,17 +511,23 @@ void showPaymentQr(const String& orderId, const String& amountText, const String
 
     // Gradient Header
     drawGradientRect(0, 0, kScreenWidth, 52, resolveHeaderColorStart(), resolveHeaderColorEnd());
-    drawCenteredText("THANH TOAN QR", 30, 1, COL_WHITE, true);
-    drawCenteredText("Don hang #" + orderId, 48, 1, COL_PLATINUM, false);
+    drawCenteredText("THANH TOAN QR", 32, 1, COL_WHITE, true);
+
+    tft.setFont(NULL); tft.setTextSize(1);
+    String orderLabel = "Don hang #" + orderId;
+    int16_t x1, y1; uint16_t tw, th;
+    tft.getTextBounds(orderLabel, 0, 0, &x1, &y1, &tw, &th);
+    tft.setCursor((kScreenWidth - (int16_t)tw) / 2, 42);
+    tft.setTextColor(COL_PLATINUM);
+    tft.print(orderLabel);
 
     // QR Code
     drawQr(qrPayload);
 
-    // Amount Area
+    // Amount + status area
+    drawCenteredText("CHO THANH TOAN...", 240, 1, COL_TEXT_MUTED, true);
     drawCard(10, 260, 220, 50, COL_WHITE, COL_ACCENT);
-    drawCenteredMultilineText(amountText, 282, 1, COL_PRIMARY, 2, 200, 20);
-    
-    drawCenteredText("CHO THANH TOAN...", 242, 1, COL_TEXT_MUTED, true);
+    drawCenteredText(amountText, 290, 1, COL_PRIMARY, true);
 }
 
 void showPaymentResult(const String& title, const String& detail, bool success);
@@ -517,7 +540,7 @@ void showCashPaymentProgress(const String& orderId, uint32_t total, uint32_t rec
     // Progress Card
     drawCard(20, 65, 200, 155, COL_WHITE, COL_LIGHTGREY);
 
-    drawCenteredText("TONG THANH TOAN:", 85, 1, COL_TEXT_MUTED);
+    drawCenteredText("TONG TIEN:", 85, 1, COL_TEXT_MUTED);
     drawCenteredText(String(total) + " VND", 108, 2, COL_TEXT_MAIN);
 
     drawDivider(135);
@@ -532,7 +555,7 @@ void showCashPaymentProgress(const String& orderId, uint32_t total, uint32_t rec
 
     if (total > 0) {
         float pct = (float)received / (float)total;
-        if (pct > 1.0) pct = 1.0;
+        if (pct > 1.0f) pct = 1.0f;
         int16_t fillW = (int16_t)(pct * pbW);
         
         if (fillW >= pbW) {
@@ -545,60 +568,63 @@ void showCashPaymentProgress(const String& orderId, uint32_t total, uint32_t rec
         drawCenteredText(pctStr, 275, 1, COL_PRIMARY, true);
     }
 
-    drawCenteredText("Vui long dua tien vao khe", 305, 1, COL_TEXT_MUTED, false);
+    drawFooterHint("Vui long dua tien vao khe", 305);
 }
 
 void showPaymentResult(const String& title, const String& detail, bool success) {
     prepareCanvas(COL_BG);
 
-    uint16_t cardColor = COL_WHITE;
     uint16_t accentColor = success ? COL_SUCCESS : COL_ERROR;
     
-    drawCard(15, 60, 210, 200, cardColor, accentColor);
+    drawCard(15, 50, 210, 215, COL_WHITE, accentColor);
 
-    drawCenteredText(success ? "THANH CONG" : "THAT BAI", 95, 1, accentColor, true);
+    drawCenteredText(success ? "THANH CONG" : "THAT BAI", 85, 2, accentColor, true);
     
-    // Real Icons instead of 'V'/'X'
+    // Circle icon with checkmark or cross
     if (success) {
-        tft.fillCircle(120, 145, 25, COL_SUCCESS);
-        drawCheckIcon(120, 142, COL_WHITE);
+        tft.fillCircle(120, 135, 25, COL_SUCCESS);
+        drawCheckIcon(120, 132, COL_WHITE);
     } else {
-        tft.fillCircle(120, 145, 25, COL_ERROR);
-        drawCrossIcon(120, 145, COL_WHITE);
+        tft.fillCircle(120, 135, 25, COL_ERROR);
+        drawCrossIcon(120, 135, COL_WHITE);
     }
 
-    drawCenteredMultilineText(title, 200, 1, COL_TEXT_MAIN, 2, 190, 24);
-    drawCenteredMultilineText(detail, 230, 1, COL_TEXT_MUTED, 3, 190, 18);
+    drawDivider(172);
+    drawCenteredMultilineText(title, 190, 1, COL_TEXT_MAIN, 2, 190, 20);
+    drawCenteredMultilineText(detail, 220, 1, COL_TEXT_MUTED, 2, 190, 18);
     
-    drawCenteredText("Bam bat ky de tiep tuc", 300, 1, COL_LIGHTGREY, false);
+    drawFooterHint("Bam phim bat ky de tiep tuc", 300, COL_LIGHTGREY);
 }
 
 void showError(const String& title, const String& detail) {
     prepareCanvas(COL_BG);
-    drawCard(15, 65, 210, 195, COL_WHITE, COL_ERROR);
+    drawCard(15, 60, 210, 200, COL_WHITE, COL_ERROR);
 
-    // Alert Icon
-    tft.fillTriangle(120, 95, 95, 140, 145, 140, COL_ERROR);
-    drawCenteredText("!", 128, 1, COL_WHITE, true);
+    // Alert Triangle Icon
+    tft.fillTriangle(120, 85, 95, 135, 145, 135, COL_ERROR);
+    tft.setFont(NULL); tft.setTextSize(3);
+    tft.setTextColor(COL_WHITE);
+    tft.setCursor(113, 100);
+    tft.print("!");
 
-    drawCenteredMultilineText(title, 165, 1, COL_TEXT_MAIN, 2, 190, 24);
-    drawCenteredMultilineText(detail, 205, 1, COL_TEXT_MUTED, 3, 190, 18);
+    drawCenteredMultilineText(title, 160, 1, COL_TEXT_MAIN, 2, 190, 22);
+    drawCenteredMultilineText(detail, 200, 1, COL_TEXT_MUTED, 3, 190, 18);
     
-    drawCenteredText("Bam [#] de quay lai", 290, 1, COL_LIGHTGREY, false);
+    drawFooterHint("Bam [#] de quay lai", 290, COL_LIGHTGREY);
 }
 
 void showMaintenance(const String& reason) {
     prepareCanvas(COL_BG);
-    drawCard(15, 45, 210, 235, COL_WHITE, COL_PRIMARY);
+    drawCard(15, 45, 210, 230, COL_WHITE, COL_PRIMARY);
 
-    drawCenteredText("BAO TRI HE THONG", 75, 1, COL_PRIMARY, true);
+    drawCenteredText("BAO TRI", 80, 2, COL_PRIMARY, true);
     
-    drawGearIcon(120, 120, COL_PRIMARY);
+    drawGearIcon(120, 130, COL_PRIMARY);
 
-    drawCenteredMultilineText(reason, 175, 1, COL_TEXT_MAIN, 4, 190, 24);
+    drawDivider(165);
+    drawCenteredMultilineText(reason, 185, 1, COL_TEXT_MAIN, 4, 190, 20);
 
-    drawCenteredText("Vui long quay lai sau", 245, 1, COL_TEXT_MUTED, false);
-    drawCenteredText("SERVICE MAINTENANCE", 310, 1, COL_LIGHTGREY, false);
+    drawFooterHint("Vui long quay lai sau", 290);
 }
 
 }  // namespace displayui

@@ -1,5 +1,6 @@
 #include "hardware_manager.h"
 
+#include <avr/wdt.h>
 #include "bill_detector.h"
 #include "gate_manager.h"
 #include "motor_controller.h"
@@ -21,25 +22,15 @@ uint32_t billDetectionStartedAt = 0;
 const uint32_t kBillDebounceMs = 2000;
 
 void printInitStatus() {
-    char buffer[96];
-    snprintf(buffer, sizeof(buffer), "[HW] Init complete | led=%d servo=%d",
-             unopins::kStatusLedPin, unopins::kServoPin);
-    Serial.println(buffer);
+    // Debug removed — Serial shared with ESP32
 }
 
 void printBillDetected(const BillDetector::Color& color) {
-    char buffer[96];
-    snprintf(buffer, sizeof(buffer), "[BILL] *** 10,000 VND *** | R=%d G=%d B=%d", color.r, color.g, color.b);
-    Serial.println(buffer);
+    (void)color; // Debug removed — Serial shared with ESP32
 }
 
 void printHardwareStatus(bool gateOpen, const BillDetector::Color& color) {
-    char buffer[112];
-    snprintf(buffer, sizeof(buffer), "[HW STATUS] gate=%s bill_processing=%d rgb=(%d,%d,%d)",
-             gateOpen ? "OPEN" : "CLOSED",
-             billProcessing ? 1 : 0,
-             color.r, color.g, color.b);
-    Serial.println(buffer);
+    (void)gateOpen; (void)color; // Debug removed — Serial shared with ESP32
 }
 
 }  // namespace
@@ -73,19 +64,18 @@ void update() {
     if (detected && !billProcessing) {
         if (billDetectionStartedAt == 0) {
             billDetectionStartedAt = now;
-            Serial.println(F("[BILL] Potential bill detected, debouncing..."));
+            // Debouncing bill detection
         } else if (now - billDetectionStartedAt > 500) { // Slightly longer debounce for stability
             BillDetector::Color color = billScanner->getCurrentColor();
             printBillDetected(color);
             billGate->trigger();
-            Serial.println(F("[GATE] Triggered (5s OPEN) for bill insertion."));
             serial_protocol::sendEvent("CASH_INSERTED", "10000");
             billProcessing = true;
             billDetectionStartedAt = now;
         }
     } else if (!detected && billProcessing) {
         if (now - billDetectionStartedAt > kBillDebounceMs) {
-            Serial.println(F("[BILL] Slot clear. Ready for next."));
+            // Bill slot clear, ready for next
             billProcessing = false;
             billDetectionStartedAt = 0;
         }
@@ -102,34 +92,38 @@ void testMotor(const char* payload) {
         return;
     }
 
-    Serial.print(F("[MOTOR] START TEST | Selection: "));
-    Serial.println(payload);
+    MotorController* target = nullptr;
     
     if (strcmp(payload, "1") == 0) {
-        Serial.println(F("[MOTOR] Testing Stepper 1 (A1) ONLY..."));
-        stepper1->rotateClockwise(2048, 5); 
+        target = stepper1;
     } 
     else if (strcmp(payload, "2") == 0) {
         if (stepper2 != nullptr) {
-            Serial.println(F("[MOTOR] Testing Stepper 2 (A2) ONLY..."));
-            stepper2->rotateClockwise(2048, 5);
+            target = stepper2;
         } else {
-            Serial.println(F("[MOTOR] Stepper 2 is NULL!"));
+            serial_protocol::sendEvent("ERROR", "STEPPER2_NULL");
+            return;
         }
     }
     else {
-        // Default legacy behavior: rotate both one after another
-        Serial.println(F("[MOTOR] Testing both motors sequentially..."));
-        Serial.println(F("[MOTOR] -> Stepper 1..."));
-        stepper1->rotateClockwise(2048, 5); 
+        // Test both sequentially
+        stepper1->move(2048, 5);
+        while (stepper1->isMoving()) { wdt_reset(); stepper1->tick(); delay(1); }
+        stepper1->stop();
         delay(500);
         if (stepper2 != nullptr) {
-            Serial.println(F("[MOTOR] -> Stepper 2..."));
-            stepper2->rotateClockwise(2048, 5);
+            stepper2->move(2048, 5);
+            while (stepper2->isMoving()) { wdt_reset(); stepper2->tick(); delay(1); }
+            stepper2->stop();
         }
+        serial_protocol::sendEvent("ACK", "MOTOR_TEST_OK");
+        return;
     }
     
-    Serial.println(F("[MOTOR] TEST DONE"));
+    // Single motor test
+    target->move(2048, 5);
+    while (target->isMoving()) { wdt_reset(); target->tick(); delay(1); }
+    target->stop();
     serial_protocol::sendEvent("ACK", "MOTOR_TEST_OK");
 }
 
@@ -159,7 +153,7 @@ void resetProcessingState() {
     billProcessing = false;
     billDetectionStartedAt = 0;
     if (billScanner != nullptr) billScanner->begin(); // Realignment
-    Serial.println(F("[HW] State reset to IDLE."));
+    // Debug removed — Serial shared with ESP32
 }
 
 }  // namespace hardware_manager

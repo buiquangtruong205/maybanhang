@@ -288,7 +288,10 @@ async function loadAllData() {
         loadOrders(),
         loadTransactions(),
         loadFirmware(),
-        loadAdminLogs()
+        loadAdminLogs(),
+        loadDeviceLogs(),
+        loadDeviceIdentities(),
+        loadDeviceSessions()
     ]);
 
     // Populate telemetry machine filter

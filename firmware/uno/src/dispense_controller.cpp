@@ -42,15 +42,16 @@ void run(const char* payload) {
         return;
     }
 
-    Serial.print(F("[DISPENSE] Motor starting for slot: "));
-    Serial.println(slotCode);
-    activeStepper->rotateClockwise(4096, 5); // Start motor
+    // Use move() instead of rotateClockwise() because rotateClockwise()
+    // runs a blocking loop WITHOUT wdt_reset() → causes watchdog reset!
+    // The while loop below already has wdt_reset() and calls tick().
+    activeStepper->move(4096, 5); // Non-blocking: just sets target
 
     const uint32_t startedAt = millis();
     const uint32_t hardTimeoutMs = 15000;
     bool dispenseSuccess = false;
 
-    // Loop while motor is moving
+    // Loop while motor is moving — this loop has wdt_reset()
     while (millis() - startedAt < hardTimeoutMs) {
         wdt_reset(); 
         
@@ -68,7 +69,7 @@ void run(const char* payload) {
     if (dispenseSuccess) {
         serial_protocol::sendEvent("DISPENSE_OK", slotCode[0] ? slotCode : "OK");
     } else {
-        Serial.println(F("[DISPENSE] Timeout"));
+        // Timeout — event sent below
         serial_protocol::sendEvent("DISPENSE_FAIL", slotCode[0] ? slotCode : "TIMEOUT");
     }
 }
