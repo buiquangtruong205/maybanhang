@@ -2,6 +2,7 @@ import base64
 from io import BytesIO
 import json
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -27,6 +28,7 @@ def configure_env(db_path: str) -> None:
 
 DB_FILE = tempfile.NamedTemporaryFile(prefix="vending_backend_full_", suffix=".db", delete=False)
 DB_FILE.close()
+STATIC_DIR = str(BACKEND_DIR / "test_static")
 configure_env(DB_FILE.name)
 
 from app import create_app, db  # noqa: E402
@@ -40,6 +42,7 @@ class TestFailure(Exception):
 def create_test_app():
     app = create_app()
     app.config["TESTING"] = True
+    app.static_folder = STATIC_DIR
 
     @app.route("/api/test/boom")
     def test_boom():
@@ -307,6 +310,16 @@ def main() -> int:
                 200,
                 "GET /api/slots filtered",
             )
+            expect_status(
+                client.get(f"/api/slots?machine_id={state['machine_2_id']}", headers=machine_header(machine_1["secret_key"])),
+                403,
+                "GET /api/slots foreign machine forbidden",
+            )
+            expect_status(
+                client.get(f"/api/slots/{state['slot_2_id']}", headers=machine_header(machine_1["secret_key"])),
+                403,
+                "GET /api/slots/<id> foreign machine forbidden",
+            )
 
             step("IoT machine setup")
             expect_status(
@@ -353,10 +366,10 @@ def main() -> int:
                         "fingerprint": "fp-master",
                     },
                 ),
-                201,
+                200,
                 "POST /api/iot/register-device with master key",
             )
-            ensure(payload["data"]["machine_id"] == state["machine_1_id"], "master registration returned wrong machine")
+            ensure(payload["data"]["config"]["machine_id"] == str(state["machine_1_id"]), "master registration returned wrong machine")
 
             payload = expect_status(
                 client.post(
@@ -367,7 +380,7 @@ def main() -> int:
                 200,
                 "POST /api/iot/heartbeat",
             )
-            state["device_session_id"] = payload["data"]["session_id"]
+            state["device_session_id"] = payload["session_id"]
 
             expect_status(
                 client.post(
@@ -375,17 +388,8 @@ def main() -> int:
                     headers=machine_header(machine_1["secret_key"]),
                     json={"level": "warning", "message": "sensor drift", "data": {"sensor": "temp"}},
                 ),
-                201,
-                "POST /api/iot/logs",
-            )
-            expect_status(
-                client.post(
-                    "/api/iot/report-log",
-                    headers=machine_header(machine_1["secret_key"]),
-                    json={"level": "info", "message": "device boot"},
-                ),
                 200,
-                "POST /api/iot/report-log",
+                "POST /api/iot/logs",
             )
 
             step("Device admin APIs")
@@ -431,6 +435,14 @@ def main() -> int:
                 ),
                 200,
                 "PUT /api/devices/sessions/<id>/revoke",
+            )
+            expect_status(
+                client.put(
+                    f"/api/devices/identity/{state['machine_2_id']}/restore",
+                    headers=auth_header(token),
+                ),
+                200,
+                "PUT /api/devices/identity/<id>/restore after revoke",
             )
             with patch("app.routes.device.send_machine_command", return_value=True):
                 expect_status(
@@ -569,6 +581,19 @@ def main() -> int:
             )
             state["pending_order_id"] = payload["data"]["order_id"]
             ensure(payload["data"]["price_snapshot"] == 30000.0, "Pending order price was not calculated server-side")
+            expect_status(
+                client.post(
+                    "/api/orders/pending",
+                    headers=machine_header(machine_1["secret_key"]),
+                    json={
+                        "product_id": state["product_id"],
+                        "slot_id": state["slot_2_id"],
+                        "quantity": 1,
+                    },
+                ),
+                403,
+                "POST /api/orders/pending foreign slot forbidden",
+            )
 
             expect_status(
                 client.post(
@@ -608,6 +633,20 @@ def main() -> int:
                 )
                 ensure(mocked_create_payment_link.call_args.kwargs["amount"] == 30000, "Payment creation used wrong amount")
                 state["pending_payment_code"] = payload["data"]["payment_code"]
+            expect_status(
+                client.post(
+                    "/api/payment/create",
+                    headers=machine_header(machine_2["secret_key"]),
+                    json={
+                        "order_code": state["pending_order_id"],
+                        "amount": 30000,
+                        "description": "foreign machine access",
+                        "items": [{"name": "Water", "quantity": 2, "price": 15000}],
+                    },
+                ),
+                403,
+                "POST /api/payment/create foreign machine forbidden",
+            )
             expect_status(
                 client.post(
                     f"/api/orders/{state['pending_order_id']}/cancel",
@@ -744,6 +783,21 @@ def main() -> int:
             )
             webhook_order = db.session.get(Order, state["webhook_order_id"])
             ensure(webhook_order.status_slots == "dispensed", "Dispense completion did not update status_slots")
+            slot_after_first_dispense = db.session.get(Order, state["webhook_order_id"]).slot
+            first_stock_after_dispense = slot_after_first_dispense.stock
+            expect_status(
+                client.post(
+                    "/api/iot/dispense-complete",
+                    headers=machine_header(machine_1["secret_key"]),
+                    json={"order_id": state["webhook_order_id"], "success": True},
+                ),
+                200,
+                "POST /api/iot/dispense-complete duplicate owner",
+            )
+            ensure(
+                db.session.get(Order, state["webhook_order_id"]).slot.stock == first_stock_after_dispense,
+                "Duplicate dispense should not decrement stock twice",
+            )
 
             step("Payment status and sync flows")
             payload = expect_status(
@@ -780,6 +834,34 @@ def main() -> int:
                     "GET /api/payment/status/<order_code>",
                 )
             ensure(db.session.get(Order, status_order_id).status_payment == "completed", "Payment status poll did not settle order")
+            with patch(
+                "app.routes.payment.get_payment_status",
+                return_value={
+                    "success": True,
+                    "order_code": status_order_id,
+                    "status": "PAID",
+                    "amount": 15000,
+                    "amount_paid": 15000,
+                    "amount_remaining": 0,
+                    "transactions": [{"reference": "poll-ref", "status": "SUCCESS"}],
+                },
+            ):
+                expect_status(
+                    client.get(
+                        f"/api/payment/status/{status_order_id}",
+                        headers=machine_header(machine_2["secret_key"]),
+                    ),
+                    403,
+                    "GET /api/payment/status/<order_code> foreign machine forbidden",
+                )
+            expect_status(
+                client.get(
+                    f"/api/orders/{status_order_id}/status",
+                    headers=machine_header(machine_2["secret_key"]),
+                ),
+                403,
+                "GET /api/orders/<id>/status foreign machine forbidden",
+            )
 
             payload = expect_status(
                 client.post(
@@ -815,8 +897,50 @@ def main() -> int:
                     "POST /api/payment/sync/<order_code>",
                 )
             ensure(db.session.get(Order, sync_order_id).status_payment == "completed", "Manual payment sync did not settle order")
+            with patch(
+                "app.routes.payment.get_payment_status",
+                return_value={
+                    "success": True,
+                    "order_code": sync_order_id,
+                    "status": "SUCCESS",
+                    "amount": 15000,
+                    "amount_paid": 15000,
+                    "amount_remaining": 0,
+                    "transactions": [{"reference": "sync-ref", "status": "SUCCESS"}],
+                },
+            ):
+                expect_status(
+                    client.post(
+                        f"/api/payment/sync/{sync_order_id}",
+                        headers=machine_header(machine_2["secret_key"]),
+                    ),
+                    403,
+                    "POST /api/payment/sync/<order_code> foreign machine forbidden",
+                )
+            expect_status(
+                client.post(
+                    f"/api/orders/{sync_order_id}/cancel",
+                    headers=machine_header(machine_2["secret_key"]),
+                ),
+                403,
+                "POST /api/orders/<id>/cancel foreign machine forbidden",
+            )
+            expect_status(
+                client.get("/api/debug-db", headers=machine_header(machine_1["secret_key"])),
+                403,
+                "GET /api/debug-db forbidden",
+            )
 
             step("Cash payment flow")
+            expect_status(
+                client.post(
+                    "/api/iot/create-order",
+                    headers=machine_header(machine_1["secret_key"]),
+                    json={"slot_code": "A1", "quantity": 999},
+                ),
+                400,
+                "POST /api/iot/create-order insufficient stock for quantity",
+            )
             payload = expect_status(
                 client.post(
                     "/api/iot/create-order",
@@ -844,7 +968,7 @@ def main() -> int:
                 200,
                 "POST /api/iot/cash-insert partial",
             )
-            ensure(payload["paid"] is False, "First cash insert should not complete payment")
+            ensure(payload["data"]["status"] != "completed", "First cash insert should not complete payment")
             payload = expect_status(
                 client.post(
                     "/api/iot/cash-insert",
@@ -854,7 +978,7 @@ def main() -> int:
                 200,
                 "POST /api/iot/cash-insert complete",
             )
-            ensure(payload["paid"] is True, "Second cash insert should complete payment")
+            ensure(payload["data"]["status"] == "completed", "Second cash insert should complete payment")
             payload = expect_status(
                 client.get(
                     f"/api/iot/cash-status/{state['cash_order_id']}",
@@ -863,7 +987,7 @@ def main() -> int:
                 200,
                 "GET /api/iot/cash-status after insert",
             )
-            ensure(payload["data"]["status_payment"] == "completed", "Cash status did not reflect completed payment")
+            ensure(payload["data"]["is_paid"] is True, "Cash status did not reflect completed payment")
 
             step("Legacy order and transaction routes")
             payload = expect_status(
@@ -881,10 +1005,39 @@ def main() -> int:
                 "POST /api/orders legacy",
             )
             legacy_order_id = payload["data"]["order_id"]
+            expect_status(
+                client.post(
+                    "/api/orders",
+                    json={
+                        "product_id": state["product_id"] + 999,
+                        "price_snapshot": 15000,
+                        "slot_id": state["slot_2_id"],
+                        "status_payment": "completed",
+                        "status_slots": "completed",
+                    },
+                ),
+                400,
+                "POST /api/orders legacy product mismatch",
+            )
+            expect_status(
+                client.post(
+                    "/api/orders",
+                    json={
+                        "product_id": state["product_id"],
+                        "price_snapshot": 12345,
+                        "slot_id": state["slot_2_id"],
+                        "status_payment": "completed",
+                        "status_slots": "completed",
+                    },
+                ),
+                400,
+                "POST /api/orders legacy price mismatch",
+            )
             expect_status(client.get(f"/api/orders/{legacy_order_id}", headers=auth_header(token)), 200, "GET /api/orders/<id>")
             payload = expect_status(
                 client.post(
                     "/api/transactions",
+                    headers=auth_header(token),
                     json={
                         "order_id": legacy_order_id,
                         "amount": 15000,
@@ -899,6 +1052,18 @@ def main() -> int:
                 "POST /api/transactions",
             )
             state["manual_transaction_id"] = payload["data"]["transaction_id"]
+            expect_status(
+                client.post(
+                    "/api/transactions",
+                    json={
+                        "order_id": legacy_order_id,
+                        "amount": 15000,
+                        "status": "success",
+                    },
+                ),
+                401,
+                "POST /api/transactions unauthorized forbidden",
+            )
             expect_status(client.get("/api/transactions", headers=auth_header(token)), 200, "GET /api/transactions")
             expect_status(
                 client.get(f"/api/transactions/{state['manual_transaction_id']}", headers=auth_header(token)),
@@ -927,6 +1092,16 @@ def main() -> int:
                 "POST /api/staff-access",
             )
             state["staff_access_id"] = payload["data"]["access_id"]
+            payload = expect_status(
+                client.post(
+                    "/api/staff-access",
+                    headers=auth_header(token),
+                    json={"machine_id": state["machine_1_id"], "action": "maintenance", "note": "Spoofed", "user_id": 9999},
+                ),
+                201,
+                "POST /api/staff-access ignore spoofed user_id",
+            )
+            ensure(payload["data"]["user_id"] == state["user_id"], "staff-access should use authenticated user_id")
             expect_status(client.get("/api/staff-access", headers=auth_header(token)), 200, "GET /api/staff-access")
             expect_status(
                 client.get(f"/api/staff-access/{state['staff_access_id']}", headers=auth_header(token)),
@@ -947,6 +1122,35 @@ def main() -> int:
             ensure(payload["meta"]["total"] > 0, "Expected admin activity logs")
             payload = expect_status(client.get("/api/admin-logs/stats", headers=auth_header(token)), 200, "GET /api/admin-logs/stats")
             ensure(payload["data"]["total_actions"] > 0, "Admin log stats total_actions should be positive")
+
+            step("Reservation scope regression")
+            payload = expect_status(
+                client.post(
+                    "/api/orders/pending",
+                    headers=machine_header(machine_1["secret_key"]),
+                    json={"product_id": state["product_id"], "slot_id": state["slot_1_id"], "quantity": 3},
+                ),
+                201,
+                "POST /api/orders/pending reservation machine1",
+            )
+            reservation_order_id = payload["data"]["order_id"]
+            expect_status(
+                client.post(
+                    "/api/orders/pending",
+                    headers=machine_header(machine_2["secret_key"]),
+                    json={"product_id": state["product_id"], "slot_id": state["slot_2_id"], "quantity": 2},
+                ),
+                201,
+                "POST /api/orders/pending reservation machine2 unaffected",
+            )
+            expect_status(
+                client.post(
+                    f"/api/orders/{reservation_order_id}/cancel",
+                    headers=machine_header(machine_1["secret_key"]),
+                ),
+                200,
+                "POST /api/orders/<id>/cancel reservation cleanup",
+            )
 
             step("Firmware flow")
             with patch("app.utils.mqtt.send_machine_command", return_value=True):
@@ -993,6 +1197,27 @@ def main() -> int:
             ensure(payload["message"] == "An internal server error occurred", "Generic error handler leaked details")
             ensure("sensitive internal detail" not in json.dumps(payload), "Exception detail leaked to response")
 
+            step("Inactive user enforcement")
+            expect_status(
+                client.put(
+                    f"/api/users/{state['user_id']}",
+                    headers=auth_header(token),
+                    json={"is_active": False},
+                ),
+                200,
+                "PUT /api/users/<id> deactivate current user",
+            )
+            expect_status(
+                client.post("/api/login", json={"username": "admin2", "password": "newpass123"}),
+                403,
+                "POST /api/login inactive user forbidden",
+            )
+            expect_status(
+                client.get("/api/users/me", headers=auth_header(token)),
+                403,
+                "GET /api/users/me inactive token forbidden",
+            )
+
             step("Final DB consistency checks")
             ensure(DeviceIdentity.query.count() >= 1, "Expected at least one device identity in DB")
             ensure(DeviceSession.query.count() >= 1, "Expected at least one device session in DB")
@@ -1005,6 +1230,18 @@ def main() -> int:
             os.unlink(DB_FILE.name)
         except OSError:
             pass
+        uploads_dir = Path(STATIC_DIR) / "uploads"
+        if uploads_dir.exists():
+            for path in uploads_dir.iterdir():
+                if path.name == ".gitkeep":
+                    continue
+                if path.is_dir():
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
 
 
 if __name__ == "__main__":

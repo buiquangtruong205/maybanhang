@@ -45,10 +45,10 @@ void run(const char* payload) {
     // Use move() instead of rotateClockwise() because rotateClockwise()
     // runs a blocking loop WITHOUT wdt_reset() → causes watchdog reset!
     // The while loop below already has wdt_reset() and calls tick().
-    activeStepper->move(4096, 5); // Non-blocking: just sets target
+    activeStepper->move(4096, 3); // Optimized: 3ms per step (Total ~12.3s)
 
     const uint32_t startedAt = millis();
-    const uint32_t hardTimeoutMs = 15000;
+    const uint32_t hardTimeoutMs = 30000; // Increased to 30s to be safe
     bool dispenseSuccess = false;
 
     // Loop while motor is moving — this loop has wdt_reset()

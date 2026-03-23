@@ -18,7 +18,8 @@ def get_stats(current_user):
     monthly_revenue = db.session.query(
         func.sum(Order.price_snapshot)
     ).filter(
-        Order.status_payment == 'completed'
+        Order.status_payment == 'completed',
+        Order.created_at >= start_of_month
     ).scalar() or 0
     
     # 2. Sản phẩm bán chạy nhất (dựa vào orders)
@@ -27,7 +28,10 @@ def get_stats(current_user):
         Product.product_name,
         func.count(Order.order_id).label('total_sold')
     ).join(Order, Order.product_id == Product.product_id)\
-    .filter(Order.status_payment == 'completed')\
+    .filter(
+        Order.status_payment == 'completed',
+        Order.created_at >= start_of_month
+    )\
     .group_by(Product.product_id, Product.product_name)\
     .order_by(desc('total_sold'))\
     .first()
@@ -46,7 +50,8 @@ def get_stats(current_user):
         func.sum(Transaction.amount).label('total_amount')
     ).filter(
         Transaction.status.in_(['completed', 'success']),
-        Transaction.sender_bank.isnot(None)
+        Transaction.sender_bank.isnot(None),
+        Transaction.created_at >= start_of_month
     ).group_by(Transaction.sender_bank, Transaction.sender_account)\
     .order_by(desc('transaction_count'))\
     .first()
@@ -61,7 +66,10 @@ def get_stats(current_user):
     # 4. Tổng đơn hàng tháng này
     total_orders = db.session.query(
         func.count(Order.order_id)
-    ).filter(Order.status_payment == 'completed').scalar() or 0
+    ).filter(
+        Order.status_payment == 'completed',
+        Order.created_at >= start_of_month
+    ).scalar() or 0
     
     return jsonify({
         'success': True,

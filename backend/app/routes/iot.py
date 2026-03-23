@@ -54,7 +54,6 @@ def _build_device_config(machine):
     return {
         'machine_id': str(machine.machine_id),
         'machine_name': machine.name,
-        'machine_key': machine.secret_key,
         'location': machine.location,
         'mqtt': {
             'broker': broker,
@@ -125,28 +124,48 @@ def dispense_complete(machine_id):
         order, error_response = _get_order_for_machine(order_id, machine_id)
         if error_response: return error_response
         
+        previous_status = order.status_slots
+        if previous_status == 'dispensed' and dispense_success:
+            return jsonify({
+                'success': True,
+                'message': 'Dispense already recorded',
+                'order_id': order_id
+            })
+
         order.status_slots = 'dispensed' if dispense_success else 'failed'
-        db.session.commit()
-        
+
         if dispense_success and order.slot:
             # Lock slot row to prevent race condition on stock decrement
             slot = Slot.query.filter_by(slot_id=order.slot.slot_id).with_for_update().first()
-            if slot and slot.stock > 0:
-                slot.stock -= 1
-                db.session.commit()
-                print(f"📦 [STOCK] Slot {slot.slot_code} decremented to {slot.stock}")
+            qty = max(1, int(getattr(order, 'quantity', 1) or 1))
+            if slot:
+                if slot.stock < qty:
+                    db.session.rollback()
+                    return jsonify({
+                        'success': False,
+                        'message': (
+                            f'Insufficient stock to finalize dispense for order #{order_id}: '
+                            f'need {qty}, current {slot.stock}'
+                        )
+                    }), 409
+                slot.stock -= qty
+                print(f"📦 [STOCK] Slot {slot.slot_code} decremented by {qty} to {slot.stock}")
+
+            db.session.commit()
 
             from app.websocket import emit_admin_stock_update
             emit_admin_stock_update(machine_id, {
-                'slot_code': order.slot.slot_code,
-                'new_stock': order.slot.stock,
-                'slot_id': order.slot.slot_id
+                'slot_code': slot.slot_code,
+                'new_stock': slot.stock,
+                'slot_id': slot.slot_id
             })
             emit_stock_update(machine_id, {
-                'slot_code': order.slot.slot_code, 
-                'new_stock': order.slot.stock, 
-                'product_id': order.slot.product_id
+                'slot_code': slot.slot_code,
+                'new_stock': slot.stock,
+                'product_id': slot.product_id
             })
+        else:
+            db.session.commit()
         
         print(f"🎰 Dispense from machine {machine_id}: order={order_id}, success={dispense_success}")
         return jsonify({'success': True, 'message': 'Dispense completed', 'order_id': order_id})
@@ -179,6 +198,27 @@ def get_pending_orders(machine_id):
         } for o in orders]
         
         return jsonify({'success': True, 'data': order_list})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+@iot_bp.route('/iot/check-payment/<int:order_id>', methods=['GET'])
+@multi_auth_required
+def check_payment(machine_id, order_id):
+    """Kiểm tra nhanh trạng thái thanh toán của một đơn hàng cho đúng máy"""
+    try:
+        order, error_response = _get_order_for_machine(order_id, machine_id)
+        if error_response:
+            return error_response
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'order_id': order.order_id,
+                'paid': order.status_payment == 'completed',
+                'status_payment': order.status_payment,
+                'status_slots': order.status_slots
+            }
+        })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
@@ -217,6 +257,14 @@ def create_order_from_machine(machine_id):
         slot_code = json_data.get('slot_code')
         product_id = json_data.get('product_id')
         quantity = json_data.get('quantity', 1)
+
+        try:
+            quantity = int(quantity)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'quantity must be an integer'}), 400
+
+        if quantity < 1:
+            return jsonify({'success': False, 'message': 'quantity must be greater than 0'}), 400
         
         slot = Slot.query.filter_by(machine_id=machine_id, slot_code=slot_code).first() if slot_code else None
         if slot_code and not slot:
@@ -231,8 +279,12 @@ def create_order_from_machine(machine_id):
             return jsonify({'success': False, 'message': 'Product not found or inactive'}), 404
 
         # CRITICAL: Check stock before creating order
-        if slot and slot.stock <= 0:
-            return jsonify({'success': False, 'message': f'Slot {slot_code} is SOLD OUT', 'out_of_stock': True}), 400
+        if slot and slot.stock < quantity:
+            return jsonify({
+                'success': False,
+                'message': f'Slot {slot_code} does not have enough stock',
+                'out_of_stock': True
+            }), 400
 
         new_order = Order(
             machine_id=machine_id,
@@ -264,7 +316,7 @@ def create_order_from_machine(machine_id):
                 'product_name': product.product_name,
                 'price': float(new_order.price_snapshot)
             }
-        })
+        }), 201
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -287,6 +339,7 @@ def register_device(machine_id):
         machine.status = 'ONLINE'
         
         identity = DeviceIdentity.query.get(machine_id)
+        status_code = 200
         if identity:
             # Nếu thiết bị đã bị Thu hồi, không cho phép tự kích hoạt lại qua Register
             if identity.status == 'revoked':
@@ -308,13 +361,14 @@ def register_device(machine_id):
                 status='active'
             )
             db.session.add(identity)
+            status_code = 201
         
         db.session.commit()
         
         # Báo cho Dashboard biết có thiết bị mới đăng ký hoặc cập nhật định danh
         emit_admin_device_auth_update(machine_id)
         
-        return jsonify({'success': True, 'message': 'Registered', 'data': {'config': _build_device_config(machine)}})
+        return jsonify({'success': True, 'message': 'Registered', 'data': {'config': _build_device_config(machine)}}), status_code
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
@@ -386,9 +440,9 @@ def report_cash_insert(machine_id):
         # Logic cập nhật số tiền đã thanh toán (simulated via backend model helper if exists, or manual)
         # Vì model Order hiện tại không có trường 'amount_paid' trực tiếp mà dựa vào transaction, 
         # ta sẽ tạo một Transaction cho đơn hàng này.
-        from app.models import Transaction, allocate_bigint_pk
+        # Thay vì chèn thủ công bằng allocate_bigint_pk, để DB tự auto-increment
+        from app.models import Transaction
         new_tx = Transaction(
-            transaction_id=allocate_bigint_pk(Transaction, Transaction.transaction_id),
             order_id=order_id,
             amount=denomination,
             status='completed',

@@ -98,11 +98,11 @@ cd E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\esp32
 .\upload.ps1 --upload-port COM5
 ```
 
-Lý do:
-
-- đường dẫn gốc khá dài
-- `pio run` trực tiếp có thể lỗi `xtensa-esp32-elf-g++: CreateProcess`
-- `build.ps1` tự chuyển sang short path `E:\IoT\Du_An\Vending_Machine\Vesion_3\f3`
+- đường dẫn gốc khá dài có thể gây lỗi khi biên dịch (ví dụ: lỗi `xtensa-esp32-elf-g++: CreateProcess`)
+- Chúng ta dùng **Junction Directory** ở thư mục root để tạo lối tắt xây dựng dự án:
+  - `E:\IoT\Du_An\Vending_Machine\vmesp` -> `E:\IoT\Du_An\Vending_Machine\Vesion_3\firmware\esp32`
+  - Bạn có thể trực tiếp mở thư mục `vmesp` bằng VSCode và dùng PlatformIO extension để biên dịch mà không bao giờ gặp lỗi đường dẫn rắc rối.
+- `build.ps1` có thể vẫn là cách cũ, nhưng VSCode + `vmesp` là cách tốt nhất hiện tại.
 
 ### UNO
 

@@ -4,6 +4,7 @@ Payment Routes - PayOS integration endpoints
 from flask import Blueprint, request, jsonify
 from pydantic import ValidationError
 from decimal import Decimal, InvalidOperation
+from datetime import datetime
 import hashlib
 import json
 import time
@@ -48,6 +49,28 @@ def _normalize_amount(value):
         return Decimal(str(value)).quantize(Decimal('1'))
     except (InvalidOperation, ValueError, TypeError):
         return None
+
+
+def _get_order_for_payment_access(real_order_id: int, current_auth):
+    from app.models import Order
+
+    order = Order.query.get(real_order_id)
+    if not order:
+        return None, (jsonify({
+            'success': False,
+            'message': f'Không tìm thấy đơn hàng #{real_order_id}'
+        }), 404)
+
+    # For payment routes without <machine_id> in URL, multi_auth_required returns:
+    # - machine_id when authenticated by machine key
+    # - None when authenticated by admin token
+    if current_auth is not None and order.machine_id != current_auth:
+        return None, (jsonify({
+            'success': False,
+            'message': f'Đơn hàng #{real_order_id} không thuộc máy #{current_auth}'
+        }), 403)
+
+    return order, None
 
 
 def _settle_paid_order(real_order_id: int, payment_code: int, amount=None, transactions=None, source='payment'):
@@ -126,15 +149,13 @@ def _settle_paid_order(real_order_id: int, payment_code: int, amount=None, trans
             )
         }
 
-    old_stock = slot.stock
-    slot.stock -= qty
-    print(f"📦 Stock reduced for slot {slot.slot_id}: {old_stock} -> {slot.stock}")
-
+    # Note: Stock reduction has been moved to iot.py/dispense_complete 
+    # to avoid double-decrement when used with machine reporting.
     if slot.stock == 0:
         product = Product.query.filter_by(product_id=slot.product_id).with_for_update().first()
         if product and product.stock == 0:
             product.active = False
-            debug_log(f"{source.upper()}: Product {product.product_id} deactivated")
+            debug_log(f"{source.upper()}: Product {product.product_name} deactivated")
             print(f"⚠️ Product '{product.product_name}' marked as INACTIVE (total stock=0)")
 
     existing_transaction = Transaction.query.filter_by(order_id=real_order_id).first()
@@ -330,14 +351,9 @@ def create_payment(current_auth):
         
         data = PaymentCreate(**json_data)
 
-        from app.models import Order
-
-        order = Order.query.get(data.order_code)
-        if not order:
-            return jsonify({
-                'success': False,
-                'message': f'Không tìm thấy đơn hàng #{data.order_code}'
-            }), 404
+        order, error_response = _get_order_for_payment_access(data.order_code, current_auth)
+        if error_response:
+            return error_response
 
         if order.status_payment != 'pending':
             return jsonify({
@@ -530,6 +546,11 @@ def check_payment_status(current_auth, order_code):
     Check payment status by order code and sync to database if paid.
     """
     try:
+        real_order_id = _parse_order_id(order_code)
+        _, error_response = _get_order_for_payment_access(real_order_id, current_auth)
+        if error_response:
+            return error_response
+
         result = get_payment_status(order_code)
         
         if result.get('success'):
@@ -540,7 +561,6 @@ def check_payment_status(current_auth, order_code):
             
             # Nếu PayOS báo đã thanh toán, sync về database
             if is_paid:
-                real_order_id = _parse_order_id(order_code)
                 settlement = _settle_paid_order(
                     real_order_id=real_order_id,
                     payment_code=order_code,
@@ -584,18 +604,10 @@ def sync_payment_status(current_auth, order_code):
     Useful for debugging or when webhook fails.
     """
     try:
-        from app.models import Order
-        
-        # Kiểm tra order có tồn tại không
-        # Attempt to find order. Logic fix: if order_code is large (payment_code), parse it.
         real_order_id = _parse_order_id(order_code)
-        order = Order.query.get(real_order_id)
-            
-        if not order:
-            return jsonify({
-                'success': False,
-                'message': f'Không tìm thấy đơn hàng #{real_order_id}'
-            }), 404
+        order, error_response = _get_order_for_payment_access(real_order_id, current_auth)
+        if error_response:
+            return error_response
         
         # Lấy status từ PayOS
         result = get_payment_status(order_code)
@@ -679,6 +691,11 @@ def cancel_payment_link(current_auth, order_code):
     Cancel a pending payment by order code.
     """
     try:
+        real_order_id = _parse_order_id(order_code)
+        _, error_response = _get_order_for_payment_access(real_order_id, current_auth)
+        if error_response:
+            return error_response
+
         result = cancel_payment(order_code)
         
         if result.get('success'):
@@ -690,13 +707,13 @@ def cancel_payment_link(current_auth, order_code):
                 }), cancelled.get('http_status', 400)
 
             return jsonify({
-                'success': True,
-                'message': cancelled['message'],
-                'data': {
-                    'order_code': order_code,
-                    'order_id': _parse_order_id(order_code)
-                }
-            }), 200
+                    'success': True,
+                    'message': cancelled['message'],
+                    'data': {
+                        'order_code': order_code,
+                        'order_id': real_order_id
+                    }
+                }), 200
         else:
             return jsonify({
                 'success': False,
@@ -754,33 +771,8 @@ def payment_cancel_page():
     }), 200
 
 @payment_bp.route('/debug-db', methods=['GET'])
-@multi_auth_required
-def debug_db(current_auth):
-    from app.models import Order, Slot
-    orders = Order.query.order_by(Order.order_id.desc()).limit(5).all()
-    slots = Slot.query.order_by(Slot.slot_id.asc()).limit(15).all()
-    
-    logs = ""
-    log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'debug_payment.log')
-    if os.path.exists(log_path):
-        with open(log_path, 'r', encoding='utf-8') as f:
-            logs = f.read()
-            
+def debug_db():
     return jsonify({
-        "orders": [{
-            "id": o.order_id,
-            "product": o.product_id,
-            "slot": o.slot_id,
-            "qty": o.quantity,
-            "pay": o.status_payment,
-            "slots_status": o.status_slots
-        } for o in orders],
-        "slots": [{
-            "id": s.slot_id,
-            "code": s.slot_code,
-            "product": s.product_id,
-            "stock": s.stock,
-            "capacity": s.capacity
-        } for s in slots],
-        "logs": logs
-    })
+        'success': False,
+        'message': 'Endpoint debug đã bị vô hiệu hóa trên môi trường chạy'
+    }), 403

@@ -73,5 +73,8 @@ pio run -e uno -t upload --upload-port COM4
 
 ## Ghi chú
 
-- `f3/` là short-path workspace dùng để build ESP32 ổn định trên Windows.
-- Artefact build của PlatformIO có thể được tạo lại sau khi build.
+- **Junction Directories**: Để khắc phục vấn đề đường dẫn dài trên Windows khi lập trình bằng VSCode và PlatformIO, dự án sử dụng các liên kết Junction:
+  - `vmesp/` -> `Vesion_3/firmware/esp32` (Mã nguồn ESP32)
+  - `maybanhang/` -> `Vesion_3/CLIENT_machine` (Mã nguồn Frontend Client)
+  - `shared/` -> `Vesion_3/firmware/shared` (Dùng chung cho ESP32 và UNO)
+- Các Artefact build của PlatformIO luôn có thể được tạo lại sau khi build thành công.

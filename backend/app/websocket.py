@@ -3,7 +3,9 @@ WebSocket module for real-time payment notifications
 Uses Flask-SocketIO for WebSocket support
 """
 import os
-from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask import request
+from flask_socketio import SocketIO, emit, join_room
+import jwt
 
 # Initialize SocketIO with CORS support
 # Allow specific origins from environment, default to * for backward compatibility
@@ -16,13 +18,57 @@ socketio = SocketIO(cors_allowed_origins=cors_origins, async_mode='threading')
 connected_clients = {}
 
 
+def _extract_token_from_request(auth_data=None):
+    auth_data = auth_data or {}
+    token = auth_data.get('token') or request.args.get('token') or request.headers.get('Authorization')
+    if token and token.startswith('Bearer '):
+        token = token[7:]
+    return token
+
+
+def _get_admin_user(auth_data=None):
+    from app.models import User
+    from app.utils.auth import get_jwt_signing_key
+
+    token = _extract_token_from_request(auth_data)
+    if not token:
+        return None
+
+    try:
+        payload = jwt.decode(token, get_jwt_signing_key(), algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        return None
+
+    user = User.query.filter_by(username=payload.get('username')).first()
+    if not user or not user.is_active:
+        return None
+    return user
+
+
+def _extract_machine_key(auth_data=None):
+    auth_data = auth_data or {}
+    return auth_data.get('machine_key') or request.args.get('machine_key') or request.headers.get('X-Machine-Key')
+
+
+def _get_machine(auth_data=None):
+    from app.models import Machine
+    from app.utils.machine_auth import hash_machine_key
+
+    machine_key = _extract_machine_key(auth_data)
+    if not machine_key:
+        return None
+    return Machine.query.filter_by(secret_key=hash_machine_key(machine_key)).first()
+
+
 # ==========================================
 # /payment Namespace (Existing)
 # ==========================================
 
 @socketio.on('connect', namespace='/payment')
-def on_payment_connect():
+def on_payment_connect(auth=None):
     """Handle new WebSocket connection for payments"""
+    if not _get_admin_user(auth) and not _get_machine(auth):
+        return False
     print(f"🔌 Payment WebSocket client connected")
 
 
@@ -35,8 +81,22 @@ def on_payment_disconnect():
 @socketio.on('subscribe', namespace='/payment')
 def on_payment_subscribe(data):
     """Subscribe to payment updates for a specific order"""
+    from app.models import Order
+
     order_id = data.get('order_id')
     if order_id:
+        admin_user = _get_admin_user(data)
+        machine = _get_machine(data)
+        order = Order.query.get(order_id)
+        if not order:
+            emit('subscription_error', {'message': 'Order not found'})
+            return
+
+        order_machine_id = order.machine_id or (order.slot.machine_id if order.slot else None)
+        if not admin_user and (not machine or machine.machine_id != order_machine_id):
+            emit('subscription_error', {'message': 'Forbidden'})
+            return
+
         room = f'order_{order_id}'
         join_room(room)
         print(f"📢 Client subscribed to payment room: {room}")
@@ -67,7 +127,9 @@ def emit_payment_cancelled(order_id):
 # ==========================================
 
 @socketio.on('connect', namespace='/machine')
-def on_machine_connect():
+def on_machine_connect(auth=None):
+    if not _get_machine(auth):
+        return False
     print(f"🔌 Machine WebSocket connected")
 
 
@@ -76,6 +138,11 @@ def on_machine_subscribe(data):
     """Máy bán hàng subscribe vào room của chính mình để nhận lệnh hoặc cập nhật"""
     machine_id = data.get('machine_id')
     if machine_id:
+        machine = _get_machine(data)
+        if not machine or int(machine_id) != machine.machine_id:
+            emit('machine_subscription_error', {'message': 'Forbidden'})
+            return
+
         room = f'machine_{machine_id}'
         join_room(room)
         print(f"📢 Machine {machine_id} subscribed to room: {room}")
@@ -105,13 +172,18 @@ def emit_payment_status_update(machine_id, payment_data):
 # ==========================================
 
 @socketio.on('connect', namespace='/admin')
-def on_admin_connect():
+def on_admin_connect(auth=None):
+    if not _get_admin_user(auth):
+        return False
     print(f"🔌 Admin WebSocket connected")
 
 
 @socketio.on('subscribe_admin', namespace='/admin')
-def on_admin_subscribe():
+def on_admin_subscribe(data=None):
     """Admin subscribe vào room chung để nhận tất cả log/sự kiện"""
+    if not _get_admin_user(data):
+        emit('admin_subscription_error', {'message': 'Forbidden'})
+        return
     join_room('admin_room')
     print(f"📢 Admin subscribed to global admin room")
     emit('admin_subscribed', {'status': 'active'})

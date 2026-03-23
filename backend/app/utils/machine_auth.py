@@ -6,6 +6,10 @@ from flask import request, jsonify, current_app
 from app.models import Machine, User, DeviceIdentity
 from app.utils.auth import get_jwt_signing_key
 import jwt
+import hashlib
+
+
+HASH_PREFIX = "sha256$"
 
 
 def _mask_machine_key(machine_key):
@@ -14,6 +18,14 @@ def _mask_machine_key(machine_key):
     if len(machine_key) <= 4:
         return "****"
     return f"{machine_key[:4]}***"
+
+
+def hash_machine_key(machine_key: str) -> str:
+    return f"{HASH_PREFIX}{hashlib.sha256((machine_key or '').encode('utf-8')).hexdigest()}"
+
+
+def is_hashed_machine_key(value: str) -> bool:
+    return bool(value) and value.startswith(HASH_PREFIX)
 
 
 def _validate_machine_key(machine_key):
@@ -34,7 +46,11 @@ def _validate_machine_key(machine_key):
                      return machine, None, None
         return "MASTER", None, None
 
-    machine = Machine.query.filter_by(secret_key=machine_key).first()
+    hashed_machine_key = hash_machine_key(machine_key)
+    machine = Machine.query.filter_by(secret_key=hashed_machine_key).first()
+    if not machine:
+        # Temporary fallback for legacy rows before startup migration touches them.
+        machine = Machine.query.filter_by(secret_key=machine_key).first()
     if not machine:
         return None, f'Invalid machine key: {_mask_machine_key(machine_key)}. Access denied.', 403
 

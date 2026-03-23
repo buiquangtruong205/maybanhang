@@ -80,6 +80,17 @@ def login():
                 'success': False,
                 'message': 'Invalid credentials'
             }), 401
+
+        if not user.is_active:
+            log_admin_action(
+                user_id=user.user_id,
+                action='login_failed',
+                detail=f"Tài khoản bị vô hiệu hóa: {user.username}"
+            )
+            return jsonify({
+                'success': False,
+                'message': 'User account is inactive'
+            }), 403
         
         token = generate_token(user.username)
         token_out = Token(access_token=token, token_type='bearer')

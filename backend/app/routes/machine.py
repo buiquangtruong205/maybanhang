@@ -7,8 +7,17 @@ from app.schemas import MachineCreate, MachineOut
 from app.utils import token_required, multi_auth_required
 from app.utils.admin_logger import log_admin_action
 from app.utils.mqtt import send_machine_command
+from app.utils.machine_auth import hash_machine_key
 
 machine_bp = Blueprint('machine', __name__)
+
+
+def _mask_secret_key(secret_key):
+    if not secret_key:
+        return None
+    if len(secret_key) <= 4:
+        return '****'
+    return f"{secret_key[:4]}***"
 
 
 def _normalize_optional_string(value):
@@ -42,7 +51,9 @@ def _apply_machine_payload(machine, data):
     machine.name = data.name
     machine.location = _normalize_optional_string(data.location)
     machine.status = data.status
-    machine.secret_key = data.secret_key.strip()
+    submitted_secret = data.secret_key.strip()
+    if submitted_secret != _mask_secret_key(machine.secret_key):
+        machine.secret_key = hash_machine_key(submitted_secret)
     machine.mqtt_command_topic = _normalize_optional_string(data.mqtt_command_topic)
     machine.mqtt_status_topic = _normalize_optional_string(data.mqtt_status_topic)
     machine.mqtt_broadcast_status_topic = _normalize_optional_string(data.mqtt_broadcast_status_topic)
@@ -80,6 +91,8 @@ def get_machines(current_user):
                 m_out['wifi_signal'] = identity.wifi_ssid or ""
                 m_out['wifi_status'] = "connected"
                 m_out['rssi'] = identity.rssi
+
+        m_out['secret_key'] = _mask_secret_key(m.secret_key)
         
         data.append(m_out)
         
@@ -121,6 +134,7 @@ def get_machine(current_auth, machine_id):
             m_out['wifi_signal'] = identity.wifi_ssid or ""
             m_out['wifi_status'] = "connected"
             m_out['rssi'] = identity.rssi
+    m_out['secret_key'] = _mask_secret_key(machine.secret_key)
 
     return jsonify({
         'success': True,
@@ -185,7 +199,8 @@ def create_machine(current_user):
                 'message': 'secret_key is required'
             }), 400
 
-        existing_key = Machine.query.filter_by(secret_key=secret_key).first()
+        hashed_secret_key = hash_machine_key(secret_key)
+        existing_key = Machine.query.filter_by(secret_key=hashed_secret_key).first()
         if existing_key:
             return jsonify({
                 'success': False,
@@ -206,11 +221,12 @@ def create_machine(current_user):
             target_id=new_machine.machine_id
         )
         
-        machine_out = MachineOut.model_validate(new_machine)
+        machine_out = MachineOut.model_validate(new_machine).model_dump()
+        machine_out['secret_key'] = _mask_secret_key(new_machine.secret_key)
         return jsonify({
             'success': True,
             'message': 'Machine created successfully',
-            'data': machine_out.model_dump()
+            'data': machine_out
         }), 201
     
     except ValidationError as e:
@@ -249,8 +265,10 @@ def update_machine(current_user, machine_id):
                 'message': 'secret_key is required'
             }), 400
 
+        preserve_existing_secret = secret_key == _mask_secret_key(machine.secret_key)
+        lookup_secret = machine.secret_key if preserve_existing_secret else hash_machine_key(secret_key)
         existing_key = Machine.query.filter(
-            Machine.secret_key == secret_key,
+            Machine.secret_key == lookup_secret,
             Machine.machine_id != machine_id
         ).first()
         if existing_key:
@@ -271,11 +289,12 @@ def update_machine(current_user, machine_id):
             target_id=machine_id
         )
         
-        machine_out = MachineOut.model_validate(machine)
+        machine_out = MachineOut.model_validate(machine).model_dump()
+        machine_out['secret_key'] = _mask_secret_key(machine.secret_key)
         return jsonify({
             'success': True,
             'message': 'Machine updated successfully',
-            'data': machine_out.model_dump()
+            'data': machine_out
         })
     
         
@@ -287,11 +306,12 @@ def update_machine(current_user, machine_id):
             target_id=machine_id
         )
         
-        machine_out = MachineOut.model_validate(machine)
+        machine_out = MachineOut.model_validate(machine).model_dump()
+        machine_out['secret_key'] = _mask_secret_key(machine.secret_key)
         return jsonify({
             'success': True,
             'message': 'Machine updated successfully',
-            'data': machine_out.model_dump()
+            'data': machine_out
         })
     
     except ValidationError as e:

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from pydantic import ValidationError
 from app import db
-from app.models import Transaction
+from app.models import Transaction, Order
 from app.schemas import TransactionCreate, TransactionOut
 from app.utils import token_required
 
@@ -33,7 +33,8 @@ def get_transaction(current_user, transaction_id):
     })
 
 @transaction_bp.route('/transactions', methods=['POST'])
-def create_transaction():
+@token_required
+def create_transaction(current_user):
     try:
         json_data = request.get_json(force=True, silent=True)
         if not json_data:
@@ -42,6 +43,14 @@ def create_transaction():
                 'message': 'Request body must be valid JSON'
             }), 400
         data = TransactionCreate(**json_data)
+
+        order = Order.query.get(data.order_id)
+        if not order:
+            return jsonify({
+                'success': False,
+                'message': 'Order not found'
+            }), 404
+
         new_transaction = Transaction(**data.model_dump())
         
         db.session.add(new_transaction)
@@ -60,3 +69,9 @@ def create_transaction():
             'message': 'Validation error',
             'errors': e.errors()
         }), 422
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        }), 500

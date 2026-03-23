@@ -50,7 +50,13 @@ def token_required(f):
                     'success': False,
                     'message': 'User not found'
                 }), 401
-                
+
+            if not current_user.is_active:
+                return jsonify({
+                    'success': False,
+                    'message': 'User account is inactive'
+                }), 403
+                 
         except jwt.ExpiredSignatureError:
             return jsonify({
                 'success': False,

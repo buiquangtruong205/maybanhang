@@ -60,6 +60,21 @@ def ensure_device_identity_columns():
         db.session.execute(text('ALTER TABLE device_identity ADD COLUMN last_heartbeat TIMESTAMP'))
         db.session.commit()
 
+def migrate_machine_secret_keys():
+    from app.models import Machine
+    from app.utils.machine_auth import hash_machine_key, is_hashed_machine_key
+
+    machines = Machine.query.all()
+    changed = False
+    for machine in machines:
+        if machine.secret_key and not is_hashed_machine_key(machine.secret_key):
+            machine.secret_key = hash_machine_key(machine.secret_key)
+            changed = True
+
+    if changed:
+        print("Applying security migration for machines.secret_key hashing")
+        db.session.commit()
+
 def start_offline_monitor(app):
     """Luồng chạy ngầm để phát hiện và báo máy offline real-time"""
     with app.app_context():
@@ -125,7 +140,14 @@ def create_app(config_class=Config):
         # CORS headers
         # Allow specific origins from environment, default to * for backward compatibility
         cors_origins = os.environ.get('CORS_ORIGINS', '*')
-        response.headers.add('Access-Control-Allow-Origin', cors_origins)
+        request_origin = request.headers.get('Origin')
+        if cors_origins == '*':
+            response.headers['Access-Control-Allow-Origin'] = '*'
+        else:
+            allowed_origins = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
+            if request_origin and request_origin in allowed_origins:
+                response.headers['Access-Control-Allow-Origin'] = request_origin
+                response.headers['Vary'] = 'Origin'
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Machine-Key')
         response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
         
@@ -299,6 +321,7 @@ def create_app(config_class=Config):
             ensure_machine_dynamic_config_columns()
             ensure_device_identity_columns()
             ensure_order_machine_id_column()
+            migrate_machine_secret_keys()
             
             # Khởi động luồng giám sát offline
             socketio.start_background_task(start_offline_monitor, app)

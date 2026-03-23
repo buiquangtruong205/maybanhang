@@ -13,6 +13,13 @@ slot_bp = Blueprint('slot', __name__)
 @multi_auth_required
 def get_slots(current_auth):
     machine_id = request.args.get('machine_id', type=int)
+    if current_auth is not None:
+        if machine_id is not None and machine_id != current_auth:
+            return jsonify({
+                'success': False,
+                'message': 'Machine key cannot access slots of another machine'
+            }), 403
+        machine_id = current_auth
     if machine_id:
         slots = Slot.query.filter_by(machine_id=machine_id).all()
     else:
@@ -32,6 +39,11 @@ def get_slot(current_auth, slot_id):
             'success': False,
             'message': 'Slot not found'
         }), 404
+    if current_auth is not None and slot.machine_id != current_auth:
+        return jsonify({
+            'success': False,
+            'message': 'Slot does not belong to this machine'
+        }), 403
     return jsonify({
         'success': True,
         'message': 'Slot retrieved successfully',

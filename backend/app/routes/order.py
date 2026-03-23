@@ -10,6 +10,25 @@ from app.websocket import emit_stock_update, emit_admin_order_new
 
 order_bp = Blueprint('order', __name__)
 
+
+def _get_order_for_access(order_id, current_auth):
+    order = Order.query.get(order_id)
+    if not order:
+        return None, (jsonify({
+            'success': False,
+            'message': 'Order not found'
+        }), 404)
+
+    if current_auth is not None:
+        order_machine_id = order.machine_id or (order.slot.machine_id if order.slot else None)
+        if order_machine_id != current_auth:
+            return None, (jsonify({
+                'success': False,
+                'message': 'Order does not belong to this machine'
+            }), 403)
+
+    return order, None
+
 @order_bp.route('/orders', methods=['GET'])
 @token_required
 def get_orders(current_user):
@@ -65,6 +84,22 @@ def create_order():
                 'success': False,
                 'message': 'Product not found in slot'
             }), 404
+
+        if data.product_id != slot.product_id:
+            return jsonify({
+                'success': False,
+                'message': 'product_id does not match the product assigned to the slot'
+            }), 400
+
+        expected_price = float(slot.product.price)
+        if float(data.price_snapshot) != expected_price:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'price_snapshot does not match slot product price. '
+                    f'Expected {expected_price}, got {float(data.price_snapshot)}'
+                )
+            }), 400
         
         # Tạo order
         new_order = Order(
@@ -171,12 +206,6 @@ def create_pending_order(current_auth):
         # Chỉ tính các pending order trong vòng 15 phút gần nhất (coi như timeout)
         timeout_threshold = datetime.utcnow() - timedelta(minutes=15)
         
-        pending_qty = db.session.query(func.sum(Order.quantity)).filter(
-            Order.product_id == product_id,
-            Order.status_payment == 'pending',
-            Order.created_at >= timeout_threshold
-        ).scalar() or 0
-        
         if slot_id is not None:
             slot = Slot.query.get(slot_id)
             if not slot:
@@ -189,8 +218,26 @@ def create_pending_order(current_auth):
                     'success': False,
                     'message': 'slot_id does not belong to the requested product'
                 }), 400
+
+            if current_auth is not None and slot.machine_id != current_auth:
+                return jsonify({
+                    'success': False,
+                    'message': 'slot_id does not belong to this machine'
+                }), 403
+
+            pending_qty = db.session.query(func.sum(Order.quantity)).filter(
+                Order.slot_id == slot_id,
+                Order.status_payment == 'pending',
+                Order.created_at >= timeout_threshold
+            ).scalar() or 0
             available_stock = slot.stock - pending_qty
         else:
+            pending_qty = db.session.query(func.sum(Order.quantity)).filter(
+                Order.product_id == product_id,
+                Order.machine_id == json_data.get('machine_id'),
+                Order.status_payment == 'pending',
+                Order.created_at >= timeout_threshold
+            ).scalar() or 0
             available_stock = product.stock - pending_qty
         
         if available_stock < quantity:
@@ -207,6 +254,15 @@ def create_pending_order(current_auth):
             slot = Slot.query.get(slot_id)
             if slot:
                 final_machine_id = slot.machine_id
+
+        if current_auth is not None:
+            if final_machine_id is None:
+                final_machine_id = current_auth
+            if final_machine_id != current_auth:
+                return jsonify({
+                    'success': False,
+                    'message': 'machine_id does not match authenticated machine'
+                }), 403
 
         new_order = Order(
             machine_id=final_machine_id,
@@ -241,12 +297,9 @@ def create_pending_order(current_auth):
 def complete_order(current_auth, order_id):
     """Mark order as completed after successful payment"""
     try:
-        order = Order.query.get(order_id)
-        if not order:
-            return jsonify({
-                'success': False,
-                'message': 'Order not found'
-            }), 404
+        order, error_response = _get_order_for_access(order_id, current_auth)
+        if error_response:
+            return error_response
         
         if order.status_payment == 'completed':
             return jsonify({
@@ -321,12 +374,9 @@ def complete_order(current_auth, order_id):
 def cancel_order(current_auth, order_id):
     """Cancel a pending order"""
     try:
-        order = Order.query.get(order_id)
-        if not order:
-            return jsonify({
-                'success': False,
-                'message': 'Order not found'
-            }), 404
+        order, error_response = _get_order_for_access(order_id, current_auth)
+        if error_response:
+            return error_response
         
         if order.status_payment != 'pending':
             return jsonify({
@@ -356,12 +406,9 @@ def cancel_order(current_auth, order_id):
 def get_order_status(current_auth, order_id):
     """Get order status from database (public endpoint for polling)"""
     try:
-        order = Order.query.get(order_id)
-        if not order:
-            return jsonify({
-                'success': False,
-                'message': 'Order not found'
-            }), 404
+        order, error_response = _get_order_for_access(order_id, current_auth)
+        if error_response:
+            return error_response
         
         return jsonify({
             'success': True,

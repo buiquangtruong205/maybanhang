@@ -68,13 +68,16 @@ def get_firmware_updates(current_user):
 def create_firmware_update(current_user):
     """Schedule a new firmware update (Single or Batch)"""
     try:
-        json_data = request.get_json()
+        json_data = request.get_json(force=True, silent=True) or {}
         machine_ids = json_data.get('machine_ids', []) # List of IDs
         single_id = json_data.get('machine_id') # Single ID for backward compatibility
         to_version = json_data.get('to_version')
         from_version = json_data.get('from_version', '1.0.0')
         file_url = json_data.get('file_url', 'http://stub-url/firmware.bin')
         checksum = json_data.get('checksum', 'stub-checksum')
+
+        if not to_version:
+            return jsonify({'success': False, 'message': 'to_version is required'}), 400
         
         # Combine into a unique set of IDs
         target_ids = set(machine_ids)
@@ -83,7 +86,7 @@ def create_firmware_update(current_user):
             
         if not target_ids:
             return jsonify({'success': False, 'message': 'No machine_id or machine_ids provided'}), 400
-            
+             
         from app.utils.mqtt import send_machine_command
         created_updates = []
         
@@ -103,19 +106,31 @@ def create_firmware_update(current_user):
             )
             db.session.add(new_update)
             db.session.flush() # Get ID
-            
-            # Trigger OTA via MQTT
-            # Command format: OTA_UPDATE:<update_id>:<url>:<checksum>
-            ota_payload = f"{new_update.update_id}:{new_update.file_url}:{new_update.checksum}"
-            send_machine_command(mid, "OTA_UPDATE", ota_payload)
-            
+
             created_updates.append({'machine_id': mid, 'update_id': new_update.update_id})
         
         db.session.commit()
+
+        failed_dispatches = []
+        for created in created_updates:
+            update = FirmwareUpdate.query.get(created['update_id'])
+            if not update:
+                continue
+            ota_payload = f"{update.update_id}:{update.file_url}:{update.checksum}"
+            if not send_machine_command(created['machine_id'], "OTA_UPDATE", ota_payload):
+                update.status = 'failed'
+                failed_dispatches.append(created['machine_id'])
+
+        if failed_dispatches:
+            db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': f'Firmware update scheduled for {len(created_updates)} machines',
+            'message': (
+                f'Firmware update scheduled for {len(created_updates)} machines'
+                if not failed_dispatches else
+                f'Firmware update created, but MQTT dispatch failed for machines: {failed_dispatches}'
+            ),
             'data': created_updates
         })
     except Exception as e:

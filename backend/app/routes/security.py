@@ -190,6 +190,8 @@ def create_staff_access_log(current_user):
         # Mặc định user_id là người đang đăng nhập nếu không truyền
         if 'user_id' not in json_data:
             json_data['user_id'] = current_user.user_id
+        else:
+            json_data['user_id'] = current_user.user_id
 
         data = StaffAccessLogCreate(**json_data)
 
